@@ -17,7 +17,7 @@ Resolved by the final decisions: D1 (v1 has no extra cell lines; v2 only same as
 | Additional Hi-C cell lines | Cross-cell-line generalization: HAP1, HeLa, HepG2, K562 | Processed with **the same pipeline** as the Akita/DNALongBench labels (see D1) |
 | ENCODE CTCF ChIP-seq, ATAC-seq, H3K27ac | Optional input (v2) and mechanistic analysis (v1, e.g. CTCF orientation at predicted boundaries/loops) | ENCODE |
 | 4D Nucleome | Hi-C, Micro-C, independent validation data | 4DN Data Portal |
-| SVs / perturbation Hi-C | Variant generalization (H4) | Public CRISPR + Hi-C or other perturbation studies. If too few: ClinVar / gnomAD-SV for **in-silico analysis only (H4-sim)**, with no claim of experimental validation |
+| SVs / perturbation Hi-C | Variant generalization (H4) | Public studies pairing an engineered or naturally occurring structural rearrangement with Hi-C before and after. If too few: ClinVar / gnomAD-SV for **in-silico analysis only (H4-sim)**, with no claim of experimental validation |
 
 For every dataset, record in `docs/data_manifest.md` (when created): accession, assay (Hi-C / Micro-C), protocol, read depth, replicate, genome build, license / data-use terms, download date.
 
