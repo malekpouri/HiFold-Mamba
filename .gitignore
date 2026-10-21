@@ -1,0 +1,45 @@
+# Internal, not for the public record
+INTERNAL_TODO.md
+
+# Data, checkpoints, large artefacts — never committed
+*.cool
+*.mcool
+*.hic
+*.pairs
+*.pairs.gz
+*.fa
+*.fa.gz
+*.fasta
+*.2bit
+*.bw
+*.bigWig
+*.bam
+*.bai
+*.ckpt
+*.pt
+*.pth
+*.safetensors
+data/
+checkpoints/
+runs/
+wandb/
+lightning_logs/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+*.egg-info/
+.ipynb_checkpoints/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+*.swp
+.idea/
+.vscode/
