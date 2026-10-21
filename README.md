@@ -1,6 +1,8 @@
 # HiFold-Mamba
 
-Insulation-constrained multi-scale state-space modeling for megabase-scale prediction of 3D chromatin folding.
+Sequence-based prediction of 3D chromatin folding at megabase scale.
+
+*Working title, conditional on pre-specified outcomes (see [Stopping rules](#stopping-rules)): "Insulation-Constrained Multi-Scale State-Space Modeling for Megabase-Scale Prediction of 3D Chromatin Folding".*
 
 > **Status: protocol stage — no results yet.** The analysis plan, metrics, baselines, statistical tests and stopping rules in `docs/` were fixed **before** any training, and no model has been trained. The manuscript's Results section is deliberately empty. Nothing here reports a measured outcome.
 
@@ -18,7 +20,7 @@ Replacing a convolutional or attention encoder with a state-space model is not, 
 2. **Network-wide RC equivariance** — `f(RC(x)) = rot180(f(x))` for the whole network, not just the state-space blocks, enforced by a unit test that must pass before training starts.
 3. **Multi-scale state mixing** across shallow, intermediate and deep encoder states, for domain-scale and loop-scale structure together.
 4. **Few-shot cell-type adaptation** via a FiLM cell-type embedding, measured by leave-one-cell-line-out transfer against training from scratch under equal compute.
-5. **A pre-specified analysis plan** with per-block testing against the strongest baseline in each block, oracle-style reference baselines, non-circular structural evaluation, and stopping rules that withdraw the central claim if it is not met.
+5. **A pre-specified analysis plan** with per-block testing against the strongest baseline in each block, oracle-style reference baselines, non-circular structural evaluation, and stopping rules that end the project if none of its pre-specified claims holds.
 
 ## Architecture
 
@@ -36,26 +38,26 @@ Replacing a convolutional or attention encoder with a state-space model is not, 
 | Item | Choice |
 |---|---|
 | Benchmark | DNALongBench contact-map task, hg38 |
-| Cell lines | HFF, H1-hESC, GM12878, IMR-90, HCT116 |
+| Cell lines | Training: HFF, H1-hESC, GM12878, IMR-90, HCT116. Few-shot held-out only: HAP1, HeLa, HepG2, K562 (the benchmark's other four lines) |
 | Split | Official DNALongBench files (region-based); chromosome-held-out as separate robustness. **Never** a window-level random split |
 | Primary metric | **SCC** — stratum-adjusted correlation coefficient (HiCRep). PCC always reported alongside; Spearman, where used, is named in full |
-| Statistics | SCC per window → averaged over 3 seeds → 1 Mb blocks → ΔSCC vs. the per-block best baseline → one-sided paired block bootstrap, 10,000 resamples, α = 0.025 |
-| Success | Mean block-wise ΔSCC ≥ +0.01 with a positive one-sided bound |
+| Statistics | SCC per window → averaged over 3 seeds → 1 Mb blocks → ΔSCC vs. the per-block best baseline → one-sided paired block bootstrap, 10,000 resamples, α = 0.025 (reported with the 95% percentile CI, whose lower limit is the one-sided bound) |
+| Success | Mean block-wise ΔSCC ≥ +0.01 with a positive 97.5% one-sided bound |
 | Baselines | Akita, Caduceus-Ph/PS, matched Transformer, strong CNN; mean-map references reported separately |
 | Precision | bf16 mixed precision |
 
-Blocks rather than windows are the resampling unit because neighbouring windows overlap and are not independent. The per-block maximum prevents post-hoc baseline selection. The mean-map references use measured maps from evaluation regions of *other* cell lines, so they are excluded from the primary comparison set.
+Blocks rather than windows are the resampling unit because neighbouring windows overlap and are not independent. The per-block maximum prevents post-hoc baseline selection. The global cell-line mean and the locus-shared references are excluded from the primary comparison set. The locus-shared references use measured maps from evaluation regions of *other* cell lines, so they are context only.
 
 ## Hypotheses
 
 - **H1** — exceeds the strongest trained baseline on contact-map accuracy.
 - **H2** — the insulation constraint improves TAD and loop recovery under equal compute, evaluated on **independent** boundaries (insulation-derived boundaries are internal consistency only, since training supervises insulation).
-- **H3** — pretraining on four lines plus few-shot adaptation beats training from scratch on the same limited data; evaluated on official test regions never seen in pretraining.
+- **H3** — pretraining on the five training lines plus few-shot adaptation beats training from scratch on the same limited data, for at least two of the four held-out lines; evaluated on official test regions never seen in training.
 - **H4** — tracks the direction of structural-variant effects, **only** where observed before/after maps exist; otherwise restricted to a labelled in-silico analysis.
 
 ## Stopping rules
 
-Fixed in advance. If the accuracy criterion is not met **and** the structural constraint gives no gain, the principal claim is withdrawn — the work is reconsidered, not reframed as a benchmark paper. If the structural loss shows no benefit, every structure-constrained claim is removed, including from the title. The title itself is conditional on outcomes to prevent retrofitting.
+Fixed in advance (`docs/evaluation_protocol.md` §7). Three narratives each have a pre-specified criterion: **insulation-constrained** (H2 met), **multi-scale** (H1 met and the mixer ablation significant), and **few-shot adaptation** (H3 met in at least two held-out lines). The title follows whichever holds. If none holds, the project is stopped and redesigned, not reframed as a benchmark or negative-result paper. If the model does not beat the global cell-line mean, the project fails in its current form. If the structural loss shows no benefit, every structure-constrained claim is removed, including from the title.
 
 ## Repository layout
 
@@ -66,20 +68,18 @@ docs/evaluation_protocol.md    benchmark, metrics, statistics, baselines, hypoth
 docs/architecture.md           model, training, loss, ablations
 docs/data_processing.md        data sources and dataset construction
 paper/manuscript.md            manuscript draft (Results empty)
-configs/                       one config per run
-src/                           model, training, evaluation (not yet written)
-notebooks/                     exploration and sanity checks
-notes/                         experiment log, including negative results
 ```
+
+Created when first needed: `configs/` (one config per run), `src/` (model, training, evaluation), `notebooks/` (exploration and sanity checks), `notes/` (experiment log, including negative results), `docs/data_manifest.md` (data provenance).
 
 ## Open items before training
 
-Two block implementation, because they determine where the gradient goes:
+All protocol items are decided. Two are provisional until the DNALongBench files are inspected, because they determine where the gradient goes:
 
-1. **Target space** — the benchmark's exact target transform must be documented from the released files, and the model trained in that space so scores stay commensurable with reproduced baselines.
-2. **Insulation transform** — one transform, applied identically to prediction and target. Comparing differently-scaled maps would pull the prediction toward a systematically wrong scale.
+1. **Target space.** The papers document natural-log observed/expected, clipped to (−2, 2), interpolated and smoothed, with diagonal offset 2. The released files must confirm this before any loss is written.
+2. **Insulation transform.** `g(x) = exp(2·tanh(x/2))`, applied identically to prediction and target.
 
-Also outstanding: reading the ChiMamba chapter in full (closest architectural precedent) and fixing the independent boundary and loop sources.
+Also outstanding: reading the ChiMamba chapter in full (closest architectural precedent), and selecting the accessions of the independent boundary and loop datasets.
 
 ## Reproducibility
 
@@ -87,7 +87,7 @@ Every reported number must be reproducible from a committed config and recorded 
 
 ## Data
 
-All data are public: DNALongBench; 4D Nucleome Hi-C and Micro-C; ENCODE ChIP-seq, ATAC-seq and histone marks. Accessions, assay, depth, build, licence and access date are recorded in the data manifest. No individual-level human genotype data are used — reference sequence and cell-line data only.
+All data are public: DNALongBench for training and evaluation; 4D Nucleome Hi-C/Micro-C and ENCODE CTCF ChIP-seq and ATAC-seq for structural evaluation. Histone marks and other epigenomic inputs are v2 only. Accessions, assay, depth, build, licence and access date will be recorded in `docs/data_manifest.md` as each dataset is obtained. No individual-level human genotype data are used — reference sequence and cell-line data only.
 
 ## Citation
 
@@ -102,7 +102,7 @@ Department of Computer Engineering, BA.C., Islamic Azad University, Bandar Abbas
 
 ## AI assistance
 
-AI assistance (Claude, Anthropic) was used for protocol drafting, code development and manuscript preparation. The authors are responsible for all content and verified every claim, citation and number.
+AI assistance (Claude, Anthropic) has been used for protocol drafting and manuscript preparation, and will be used for code development. The authors are responsible for all content and will verify every claim, citation and number against its primary source before submission. Items not yet verified are marked `[UNVERIFIED]` in the documents.
 
 ## License
 

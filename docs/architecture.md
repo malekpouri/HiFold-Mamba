@@ -1,6 +1,6 @@
 # Architecture and Training — HiFold-Mamba (v1)
 
-Status: **locked by the user, except open items G1–G3, G6 and G10** (see `evaluation_protocol.md` §8). Check that the name "HiFold-Mamba" doesn't clash with existing tools/papers `[UNVERIFIED]`.
+Status: **locked.** G1/G2 are provisional until the DNALongBench files confirm the target (see `evaluation_protocol.md` §8). G3, G6 and G10 were resolved on 2026-10-21. Check that the name "HiFold-Mamba" doesn't clash with existing tools/papers `[UNVERIFIED]`.
 
 ## 1. Architecture
 
@@ -33,34 +33,34 @@ Must pass for:
 - train and eval mode
 - with and without gradient checkpointing
 
-Conditions (G6): exact test in fp32, plus a separate bf16 check with a looser tolerance. In train mode, disable dropout or use identical RNG masks.
+Conditions (G6, resolved): exact test in fp32 (atol 1e-4, rtol 1e-5), plus a separate bf16 check (rtol 1e-2). In train mode, set dropout to 0 or use identical RNG masks.
 
 ## 2. Structure loss
 
 $$\mathcal{L} = \mathcal{L}_{\text{contact}} + \mathcal{L}_{\text{struct}}, \qquad \mathcal{L}_{\text{struct}} = \lambda_{\text{ins}}\mathcal{L}_{\text{ins}} + \lambda_{\text{bnd}}\mathcal{L}_{\text{bnd}} + \lambda_{\text{loop}}\mathcal{L}_{\text{loop}}$$
 
-The user's version also contained $\lambda_{\text{sym}}\lVert\hat{C}-\hat{C}^\top\rVert_1$. It is identically 0 because $\hat{C}$ is symmetrized (G3). Symmetry stays as an architectural prior.
+The user's version also contained $\lambda_{\text{sym}}\lVert\hat{C}-\hat{C}^\top\rVert_1$. It is identically 0 because $\hat{C}$ is symmetrized, so it is dropped (G3, resolved). Symmetry stays as an architectural prior.
 
-### Differentiable insulation (F1, with the G2 correction pending)
+### Differentiable insulation (F1, G2 provisional)
 
 Map to contact scale with a differentiable transform $g$, applied **identically** to the prediction and the target (G2):
 
-$$\tilde{C} = g(\hat{C}), \qquad \tilde{C}^{\text{true}} = g(C^{\text{target}})$$
+$$\tilde{C} = g(\hat{C}), \qquad \tilde{C}^{\text{true}} = g(C^{\text{target}}), \qquad g(x) = \exp\!\big(2\tanh(x/2)\big)$$
 
-User's proposal: $g = \operatorname{softplus}$ for the prediction, raw contacts for the truth. That isn't consistent (G2). Recommended: $g = \exp$ on both sides if the target is log O/E.
+$g$ is a soft-clipped exp: smooth, bounded to $[e^{-2}, e^{2}]$ to match the target's (−2, 2) natural-log clip, and ≈ exp near 0. It replaces the original "softplus on the prediction, raw contacts on the truth", which was inconsistent (G2). Final once G1 confirms the log base and range in the files.
 
-$$\hat{I}_i = \frac{1}{\lvert\Omega_i\rvert}\sum_{(a,b)\in\Omega_i}\tilde{C}_{ab}, \qquad \Omega_i = \{(a,b) : i-w \le a < i < b \le i+w,\ a,b \text{ unmasked}\}$$
+$$\hat{I}_i = \frac{1}{\lvert\Omega_i\rvert}\sum_{(a,b)\in\Omega_i}\tilde{C}_{ab}, \qquad \Omega_i = \{(a,b) : i-w \le a < i < b \le i+w,\ b-a \ge d_{\min},\ a,b \text{ unmasked}\}$$
 
-$I^{\text{true}}_i$ is the same operator on $\tilde{C}^{\text{true}}$, and $\mathcal{L}_{\text{ins}} = \frac{1}{B}\sum_i(\hat{I}_i - I^{\text{true}}_i)^2$.
+$I^{\text{true}}_i$ is the same operator on $\tilde{C}^{\text{true}}$, and $\mathcal{L}_{\text{ins}}$ is the mean of $(\hat{I}_i - I^{\text{true}}_i)^2$ over all valid $i$ (non-empty $\Omega_i$, $i \in [w, 448-w)$) and all windows in the batch.
 
-- The diagonal is excluded ($a < i < b$). The sum covers contacts **crossing** $i$, not row $i$.
+- The diagonal is excluded ($a < i < b$), and so is the benchmark's near-diagonal band ($b - a < d_{\min}$; DNALongBench uses diagonal offset 2, so $d_{\min} = 2$, which $a < i < b$ already enforces; confirm in the files under G1). The sum covers contacts **crossing** $i$, not row $i$.
 - The gradient reaches $\hat{C}$ directly.
 - $w$ = 20 bins (40 kb) by default; sensitivity reported at $w = 10, 20, 40$. Insulation is defined for $i \in [w, 448-w)$.
 - $\mathcal{L}_{\text{bnd}}$: a boundary loss derived from $\hat{I}$ (e.g. on the insulation drop/minima). The exact form is still to be specified.
 - $\mathcal{L}_{\text{loop}}$: on the predicted map. HiCCUPS / CTCF–CTCF positives + distance-matched negatives, training regions only.
 - $\mathcal{L}_{\text{contact}}$: masked MSE in the target space (the target space itself depends on G1).
 
-### Physics/structure content of v1
+### Structural content of v1
 Differentiable insulation from $\hat{C}$, the boundary loss derived from insulation, the loop loss on the map, the learnable distance bias, and architectural symmetry.
 
 ## 3. Training
@@ -70,10 +70,10 @@ Differentiable insulation from $\hat{C}$, the boundary loss derived from insulat
 | Optimizer | AdamW, weight decay 1e-2 |
 | Learning rate | 3e-4, 1,000-step warmup, cosine decay |
 | Precision | bf16 mixed precision (a practical choice for stability and compatibility with Mamba kernels; no stronger claim) |
-| Compute | Assume a 24–40 GB GPU, batch 1–4 + gradient accumulation, effective batch 8–16. **8 GB fallback:** 4 Bi-Mamba layers, hidden 128. Choose the paper configuration before training (G10) |
+| Compute | Assume a 24–40 GB GPU, batch 1–4 + gradient accumulation, effective batch 8–16. **8 GB fallback:** 4 Bi-Mamba layers, hidden 128, for development only. The paper configuration is the 24–40 GB model (G10, resolved) |
 | Weights | EMA |
 | Checkpoint selection | Mean validation HiCRep SCC (stratum-adjusted) |
-| Data | Official DNALongBench training split, 5 cell lines |
+| Data | Official DNALongBench training split, 5 training cell lines (the 4 H3 held-out lines are never used here) |
 | Schedule | $\mathcal{L}_{\text{contact}}$ until convergence, then $\mathcal{L}_{\text{struct}}$ with small weights. The Base model gets the same total steps |
 
 ## 4. Efficiency claims

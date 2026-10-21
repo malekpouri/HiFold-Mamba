@@ -9,20 +9,20 @@ We predict Hi-C / Micro-C contact maps from DNA sequence (epigenomic inputs only
 ## Binding documents (follow exactly; propose changes, never make them silently)
 
 - `Roadmap.md`: final decisions, execution plan, open items.
-- `docs/evaluation_protocol.md`: benchmark, split, metrics, statistics, baselines, H1–H4, decision rules, open items F1–F9.
+- `docs/evaluation_protocol.md`: benchmark, split, metrics, statistics, baselines, H1–H4, decision rules, open items G1–G10 (F1–F9 resolved).
 - `docs/architecture.md`: HiFold-Mamba, training, loss, ablations.
 - `docs/data_processing.md`: data sources; relevant mainly for the robustness split, H3 low-read and v2.
 
 ## v1 scope (fixed)
 
 - Human, hg38. **DNALongBench contact-map task**: 1,048,576 bp input, 2,048 bp bins, 448×448 output.
-- **Cell lines: HFF, H1-hESC, GM12878, IMR-90, HCT116 only.**
+- **Training cell lines: HFF, H1-hESC, GM12878, IMR-90, HCT116 only.** The DNALongBench contact-map task has 9 lines. The other 4 (HAP1, HeLa, HepG2, K562) are used **only** as H3 held-out lines, never in (pre)training.
 - **Primary split: official DNALongBench files.** Pretraining uses the DNALongBench training split only. Chromosome held-out is a separate robustness analysis.
 - H3 is few-shot only (FiLM cell-type embedding), on held-out cell lines, with evaluation regions excluded from pretraining.
 
 ## Current phase
 
-**Phase 0: resolve protocol G1–G10 (G1, G2 blocking) and verify sources. Do not write code until the user explicitly asks for it.**
+**Phase 0, nearly closed: all G-items are decided (G1/G2 provisionally, pending inspection of the DNALongBench files). Remaining: read the ChiMamba chapter, verify the target against the files. Do not write code until the user explicitly asks for it.**
 
 ## Working rules for Claude
 
@@ -39,7 +39,7 @@ We predict Hi-C / Micro-C contact maps from DNA sequence (epigenomic inputs only
 | Genome build | hg38 only |
 | Chromosomes | `chr` prefix. chrY, chrM, alt and unplaced contigs excluded |
 | Coordinates | 0-based, half-open. Be explicit when converting from 1-based (VCF, GFF) |
-| Target | DNALongBench processed target, unchanged (believed to be a distance-normalized log O/E-like map that **can be negative**; verify, G1). No log of the target or of predictions. Any transform used in a loss (e.g. for insulation) is applied **identically** to prediction and target |
+| Target | DNALongBench processed target, unchanged. Documented (Akita paper) as natural-log O/E, clipped to [−2, 2], missing bins interpolated, Gaussian-smoothed; upper triangle with diagonal offset 2 (99,681 values per map). **Can be negative.** Verify against the files before any loss is written (G1). No log of the target or of predictions. Any transform used in a loss (e.g. for insulation) is applied **identically** to prediction and target |
 | Masking | NaN / masked bins never count in losses or metrics |
 | Symmetry | Built into the model (symmetrized pairwise head) |
 | Diagonal | Excluded as in DNALongBench/Akita |
@@ -51,7 +51,8 @@ We predict Hi-C / Micro-C contact maps from DNA sequence (epigenomic inputs only
 
 - **SCC = stratum-adjusted correlation coefficient** (HiCRep), computed per window. Never "similarity" or "Spearman". PCC always reported. Spearman correlation is supplementary and labelled as such.
 - Checkpoint selection: mean validation HiCRep SCC.
-- Primary test: average SCC over 3 seeds per window → 1 Mb blocks → ΔSCC vs. the **per-block best** trained baseline → one-sided paired block bootstrap, 10,000 resamples. Success: ΔSCC ≥ +0.01 with a positive one-sided CI.
+- Primary test: average SCC over 3 seeds per window → 1 Mb blocks → ΔSCC vs. the **per-block best** trained baseline → one-sided paired block bootstrap, 10,000 resamples. One-sided α = 0.025. Success: ΔSCC ≥ +0.01 with a positive 97.5% one-sided bound (= lower limit of the 95% percentile CI).
+- Hard stop only if none of the three narratives (insulation, multi-scale, few-shot) meets its criterion (protocol §7). Not beating the global cell-line mean = failure; locus-shared references are context only.
 - Main H2 evidence uses **independent** boundaries/loops. Insulation-derived boundaries are internal consistency only.
 - Insulation and boundaries are computed **from the predicted map**, with the same operator as for the true map.
 - Efficiency claims never at 512 bins. Only for 4–8 Mb inputs or 128 bp tokens.
