@@ -19,9 +19,9 @@ INTERNAL_TODO.md
 *.pt
 *.pth
 *.safetensors
-data/
-checkpoints/
-runs/
+/data/
+/checkpoints/
+/runs/
 wandb/
 lightning_logs/
 
