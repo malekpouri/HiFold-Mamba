@@ -1,0 +1,34 @@
+[project]
+name = "hifold-mamba"
+version = "0.0.1"
+description = "Sequence-to-contact-map prediction at megabase scale (DNALongBench contact-map task)"
+requires-python = "==3.12.*"
+dependencies = [
+    "torch==2.14.1",
+    "numpy",
+    "scipy",
+    "pandas",
+    "matplotlib",
+    "pyyaml",
+    "einops",
+    "pytest",
+]
+
+# Fused Mamba kernels (mamba-ssm / causal-conv1d) are NOT installed: upstream wheels exist only for
+# torch 2.10 / CUDA 13, there is no nvcc here to build them, and bandwidth made the torch 2.10 stack
+# impractical (notes/2026-10-21_phase1-2.md). The model uses an exact pure-PyTorch selective scan.
+
+[tool.uv]
+environments = ["sys_platform == 'linux'"]
+
+[tool.uv.sources]
+torch = { index = "pytorch-cu130" }
+
+[[tool.uv.index]]
+name = "pytorch-cu130"
+url = "https://download.pytorch.org/whl/cu130"
+explicit = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
