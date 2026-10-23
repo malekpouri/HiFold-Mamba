@@ -14,11 +14,23 @@ link-citations: true
 
 # Abstract
 
-**Background.** Sequence-to-contact-map models predict Hi-C and Micro-C maps from DNA alone, but their training objectives are pixel-wise, while the features that matter biologically (domain boundaries, insulation, loops) are summaries of the map. Loss terms built on such summaries have been used for Hi-C resolution enhancement, but whether they improve *sequence-based* prediction, judged against annotations that are independent of the training data, has not been tested under a pre-specified design. On the DNALongBench contact-map task the task-specific Akita model remains well ahead of general long-range DNA models (published stratum-adjusted correlation, SCC, 0.230 vs. 0.115–0.133).
+**Background.** Sequence-to-contact-map models are trained with pixel-wise losses, although the features of interest (insulation, domain boundaries, loops) are summaries of the map. Insulation-based losses help Hi-C resolution enhancement. No pre-specified test has asked whether they improve *sequence-based* prediction, judged against annotations independent of the training data.
 
-**Proposed study.** We pre-register four hypotheses for HiFold-Mamba, a sequence-only model (1,048,576 bp → 448 × 448 map at 2,048 bp) built from a reverse-complement (RC)-equivariant convolutional tower, RC-equivariant bidirectional Mamba blocks, a multi-scale state mixer and a symmetric pairwise head. **H1:** it exceeds **each** of three trained baselines (reproduced Akita, a parameter-matched Transformer and a parameter-matched dilated CNN) by ≥ 0.01 SCC. **H2:** a differentiable insulation and boundary constraint, computed from the predicted map with the same operator as from the observed map, improves boundary AUROC and loop AP on independent 4DN boundary calls and ENCODE CTCF ChIA-PET loops, without lowering SCC. **H3:** pretraining plus few-shot adaptation beats training from scratch on four held-out cell lines. **H4** (variant effects) is scoped by data availability. Tests use a paired block bootstrap over 237 one-megabase test blocks (one-sided α = 0.025).
+**Proposed study.** HiFold-Mamba predicts 448 × 448 maps at 2,048 bp from 1,048,576 bp of DNA on the DNALongBench contact-map task. Every component is reverse-complement-equivariant: convolutional tower, bidirectional Mamba blocks, multi-scale mixer and symmetric pairwise head. We pre-register three hypotheses:
 
-**Pilot data.** We verified the benchmark target against Akita's processing code and the released files, verified the full-network equivariance identity numerically, and profiled the model on an 8 GB GPU. On validation windows, the observed maps recover the independent boundaries (AUROC 0.61–0.91) and loops (0.86–0.90) under the exact evaluation pipeline, which fixes the insulation window and shows that these annotations are largely shared across cell types. On the test set a non-learned reference that copies the other cell lines' measured maps at the same locus scores SCC 0.227 with the benchmark's implementation, as high as published Akita (0.230). The benchmark and HiCRep SCC weightings rank windows only moderately concordantly (Spearman ρ = 0.54). A simulation calibrated on the pilot data shows that a per-block-best comparison against several baselines, which we had originally planned, has essentially no power at this sample size, because the maximum of noisy baseline scores is biased upwards. We therefore test against each baseline (an intersection–union test), which reaches ≥ 90% power at a true ΔSCC of 0.02 under realistic between-model correlation but is under-powered at the 0.01 margin, a constraint we state in advance.
+- **H1:** it exceeds *each* of three trained baselines (reproduced Akita, a parameter-matched Transformer and a parameter-matched CNN) by ≥ 0.01 stratum-adjusted correlation (SCC).
+- **H2:** an insulation and boundary loss, computed from the predicted map with the operator used on the observed map, improves boundary AUROC and loop AP against independent 4DN boundary calls and ENCODE CTCF ChIA-PET loops, at equal training steps and without loss of SCC.
+- **H3:** pretraining plus few-shot adaptation beats training from scratch on four held-out cell lines.
+
+Tests use a paired bootstrap over 237 one-megabase test blocks (one-sided α = 0.025).
+
+**Pilot data.**
+
+- **Verification.** The benchmark target, the window coordinates and the network's equivariance were verified.
+- **Locus-shared reference.** Copying other cell lines' measured maps at the same locus matches published Akita on the benchmark's SCC (0.227 vs. 0.230).
+- **SCC weightings.** Two weightings in common use weight distance strata in opposite directions and agree only moderately (ρ = 0.54).
+- **Comparison rule.** In simulations calibrated on the pilot data, a per-block-best comparison against several baselines has no power. We therefore test against each baseline, which gives ≥ 90 % power at a true gain of 0.02.
+- **H2 positive control.** On validation windows, observed maps recover the independent boundaries (AUROC 0.61–0.91) and loops (0.86–0.90). This fixed the insulation window and showed that these annotations are largely shared across cell types.
 
 **Keywords:** 3D genome; Hi-C; Micro-C; insulation; TAD boundaries; chromatin loops; state-space models; reverse-complement equivariance; registered report.
 
@@ -253,7 +265,7 @@ Data observed before this protocol was frozen:
 
 * Training and validation targets (used for development, profiling, the λ and ρ pilots).
 * Test-set **targets**, used only for non-learned references (global mean, locus-shared mean), the SCC-variant comparison and the power analysis. **No trained model has been evaluated on the test set.**
-* The independent boundary and loop files (downloaded and checked for format; not intersected with any prediction).
+* The independent boundary and loop files. They were intersected only with **observed validation maps** for the positive control (Section 3.4), never with a model prediction or a test window.
 
 Safeguards:
 
@@ -266,7 +278,7 @@ Safeguards:
 | Question | Hypothesis | Sampling plan | Analysis plan | Rationale for test sensitivity | Interpretation given different outcomes | Theory that could be shown wrong |
 |---|---|---|---|---|---|---|
 | Does HiFold-Mamba predict maps more accurately than every trained sequence baseline? | H1: mean block ΔSCC ≥ 0.01 vs. **each** member of $\mathcal{B}$ | Official test set, 413 windows / 237 blocks; 3 seeds per model | Section 2.9 block bootstrap, intersection–union, one-sided α = 0.025 | Worst-case power ≥ 0.9 at true Δ ≈ 0.02 (ρ ≥ 0.95; Section 2.10); ≤ 0.26 at 0.01 | Met: accuracy claim. Not met: no accuracy claim; encoder comparison reported as null | That sequence-mixer choice inside an identical network changes accuracy |
-| Does a map-level insulation and boundary constraint improve structural recovery? | H2: AUROC ≥ +0.02, loop AP ≥ +0.02, SCC non-inferior | Same windows; independent boundaries (5 lines) and loops (4 lines) | Struct vs. Base, equal steps, Section 2.9 | Same blocks; joint criterion | Met: insulation-constrained claim. Not met: claim removed, reported as null | That map-derived structure losses add information beyond pixel-wise MSE for sequence models |
+| Does a map-level insulation and boundary constraint improve structural recovery? | H2: AUROC ≥ +0.02, loop AP ≥ +0.02, SCC non-inferior | Same windows; independent boundaries (5 lines) and loops (4 lines) | Struct vs. Base, equal steps, final checkpoints, Section 2.9 | Positive control: observed maps reach AUROC 0.61–0.91 (Section 3.4); joint criterion | Met: insulation-constrained claim. Not met: claim removed, reported as null | That map-derived structure losses add information beyond pixel-wise MSE for sequence models |
 | Does pretraining transfer to unseen cell lines with little data? | H3 | 4 held-out lines × 3 regimes, 3 seeds per arm | Δ_H3 per line, Holm within line; ≥ 2 of 4 lines | Equal compute and data per arm | Met: few-shot claim. Not met: no transfer claim | That sequence-learned folding grammar transfers across cell types through a cell embedding alone |
 | Does multi-scale mixing contribute? | N-M | As H1 | Full vs. no-mixer, Section 2.9 | As H1 | Met with H1: multi-scale claim | That combining depths and scales helps beyond the deepest state |
 
