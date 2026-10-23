@@ -12,7 +12,7 @@ Status: **locked.** G1/G2 are provisional until the DNALongBench files confirm t
 | 4 | Pairwise head | $\hat{C} = \mathrm{symmetrize}\big(UV^\top/\sqrt{d} + b_{\lvert i-j\rvert}\big)$, cropped to 448×448 | $U, V$ transformed so that RC of the input gives a 180° rotation of $\hat{C}$ |
 | 5 | Structure terms | No separate heads. Insulation, boundaries and loops computed **from $\hat{C}$**. **No energy head** (removed: in log/O/E space it is just the map with its sign flipped) | Operators applied to the map; RC-safe if the map is |
 | 6 | Cell-type adapter (mandatory) | Embedding $e_c$; FiLM in every Bi-Mamba block: $\gamma_c, \beta_c = \mathrm{MLP}(e_c)$, $Z \leftarrow \gamma_c \odot Z + \beta_c$ | $\gamma_c, \beta_c$ depend only on the cell type, not on strand. They must also respect the channel pairing of the RC-equivariant representation |
-| — | Distance bias $b_{\lvert i-j\rvert}$ | Learned | Depends only on $\lvert i-j\rvert$, so it's RC-safe |
+| — | Distance bias $b_{c,\lvert i-j\rvert}$ | Learned, **per cell line** (decided 2026-10-23) | Depends only on $\lvert i-j\rvert$ and the cell line, so it's RC-safe. The shared $b_{\lvert i-j\rvert}$ can't express the line-specific residual P(s) seen in the targets (trough −0.17 to −0.30). A new H3 line gets its own bias, learned in fine-tuning |
 
 Global property: $f(\mathrm{RC}(x), c) = \mathrm{rot}_{180}(f(x, c))$ with $\mathrm{rot}_{180}(C)_{ij} = C_{n-1-i,\,n-1-j}$. The RC-equivariance claim is about the **whole network**, not just the Mamba block.
 
@@ -56,7 +56,7 @@ $I^{\text{true}}_i$ is the same operator on $\tilde{C}^{\text{true}}$, and $\mat
 - The diagonal is excluded ($a < i < b$), and so is the benchmark's near-diagonal band ($b - a < d_{\min}$; DNALongBench uses diagonal offset 2, so $d_{\min} = 2$, which $a < i < b$ already enforces; confirm in the files under G1). The sum covers contacts **crossing** $i$, not row $i$.
 - The gradient reaches $\hat{C}$ directly.
 - $w$ = 20 bins (40 kb) by default; sensitivity reported at $w = 10, 20, 40$. Insulation is defined for $i \in [w, 448-w)$.
-- $\mathcal{L}_{\text{bnd}}$: a boundary loss derived from $\hat{I}$ (e.g. on the insulation drop/minima). The exact form is still to be specified.
+- $\mathcal{L}_{\text{bnd}}$ (specified 2026-10-23): masked MSE between boundary-strength profiles, $\mathcal{L}_{\text{bnd}} = \operatorname{mean}_i \big(s_i(\hat{I}) - s_i(I^{\text{true}})\big)^2$ with $s_i(I) = \overline{\log_2 I}_{[i-5,\,i+5]} - \log_2 I_i$ (depth of the insulation dip relative to its ±5-bin neighbourhood). Same operator on both maps and the same $s$ as the evaluation's boundary score. NaN positions are masked. It is a regression on dip depth, so it needs no boundary calls from the training data.
 - $\mathcal{L}_{\text{loop}}$: on the predicted map. HiCCUPS / CTCF–CTCF positives + distance-matched negatives, training regions only.
 - $\mathcal{L}_{\text{contact}}$: masked MSE in the target space (the target space itself depends on G1).
 

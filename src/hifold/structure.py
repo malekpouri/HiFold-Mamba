@@ -58,6 +58,24 @@ def insulation_np(cmap: np.ndarray, w: int = 20) -> np.ndarray:
     return insulation(torch.as_tensor(cmap, dtype=torch.float64), w=w).numpy()
 
 
+def boundary_strength_t(ins: torch.Tensor, window: int = 5) -> torch.Tensor:
+    """Differentiable `boundary_strength` over the last dim: nan-mean of log2(I) in [k-window, k+window]
+    (clipped at the edges) minus log2(I_k). NaN where I is NaN. Insulation is >= e^-2, so log2 is safe."""
+    li = torch.log2(ins)
+    ok = ~torch.isnan(li)
+    v = torch.where(ok, li, torch.zeros_like(li))
+
+    def run(t):  # sum over the clipped window via a zero-padded cumulative sum
+        c = torch.nn.functional.pad(t.cumsum(-1), (1, 0))
+        n = t.shape[-1]
+        k = torch.arange(n, device=t.device)
+        hi, lo = (k + window + 1).clamp(max=n), (k - window).clamp(min=0)
+        return c[..., hi] - c[..., lo]
+
+    out = run(v) / run(ok.to(v.dtype)).clamp_min(1) - v
+    return torch.where(ok, out, torch.full_like(out, float("nan")))
+
+
 def boundary_strength(ins: np.ndarray, window: int = 5) -> np.ndarray:
     """Per-bin boundary score: depth of the insulation dip relative to its +-window neighbourhood.
 

@@ -28,6 +28,8 @@ Verified facts from these sources: the DNALongBench contact-map task has **9 cel
 
 **SCC = stratum-adjusted correlation coefficient** (HiCRep): Pearson correlation per distance stratum, aggregated with stratum weights, computed per window. PCC is always reported. Spearman correlation is supplementary and labelled as such.
 
+**Primary SCC (decided 2026-10-23):** the HiCRep weighting (Yang et al. 2017) is primary for H1–H3, checkpoint selection and the bootstrap. The DNALongBench `scripts/metrics.py::scc` variant (≈ uniform per-stratum weights; no smoothing) is reported alongside it as a secondary metric, for comparability with published DNALongBench numbers. The two rank windows differently (Spearman ρ = 0.54 on the locus-shared reference), so both are shown in every main table.
+
 | Level | Primary | Supplementary |
 |---|---|---|
 | Contact map | SCC | PCC, Spearman correlation, MSE, MAE |
@@ -66,7 +68,7 @@ Per-window Wilcoxon: secondary only.
 | Akita | Reference sequence → contact-map model | Kept |
 | Caduceus-Ph/PS | Genomic Mamba model | Kept |
 | Matched Transformer | Same parameters and budget | **Mandatory** |
-| Strong CNN | Large receptive field | Kept |
+| Strong CNN | Large receptive field. **Defined 2026-10-23:** HiFold with the Bi-Mamba mixer swapped for a dilated residual 1D CNN (dilation $2^i$), parameter-matched and RC-equivariant (`configs/baseline_conv.yaml`) | Kept |
 | HyenaDNA | Only if checkpoint and pipeline are compatible | Optional |
 | DeepC | Only with full retraining in our format | Optional |
 | ChiMamba | Baseline, or at least a conceptual comparison table | Depends on its task (G9) |
@@ -102,6 +104,7 @@ To avoid circularity:
 | H3 scratch arm | Same architecture, random initialization, same fine-tuning data and the same number of optimizer steps |
 | H3 evaluation | **Official DNALongBench test regions** of the held-out line, not chromosome held-out (which overlaps the official training split) |
 | Lines tested | All 4 held-out lines |
+| H3 target smoothing | The DNALongBench files for the 4 held-out lines are **unsmoothed** (`kernel_stddev 0`), unlike the 5 training lines. Used unchanged (decided 2026-10-23); stated as a limitation. Both H3 arms see the same targets, so $\Delta_{\text{H3}}$ is unaffected, but absolute SCC on these lines isn't comparable with the training lines |
 
 Leave-one-out among the five training lines is an optional secondary analysis. If run, the hold-out is removed from pretraining and the 4-line model retrained.
 
@@ -213,6 +216,7 @@ Recommendation: $g = \exp$ if the target is natural-log O/E (else use the matchi
 - **Lines without an independent contact dataset:** only the secondary set is reported, and this is stated per line.
 - **Loops:** taken from an independent dataset. Loop calls derived from the training data (e.g. Rao et al. 2014 for GM12878/IMR-90) are excluded.
 - **Accessions:** chosen in Execution step 1 and recorded in `docs/data_manifest.md` before any evaluation.
+- **Source table approved 2026-10-23** (`notes/2026-10-23_g8-candidates.md`): one boundary and one loop source per line, from a different lab wherever 4DN has one. IMR-90 has no independent loop dataset on 4DN, so it gets the secondary CTCF set only for loops.
 
 **G9 — Citation links don't match their sources. Resolved 2026-10-21:** all sources are re-checked and corrected (see Sources above). ChiMamba is positioned as related work (sequence + accessibility, per its abstract) unless the full chapter shows a comparable sequence-only setting. Original note: In your list, the ChiMamba claim links to the Caduceus GitHub repository, and the arXiv-2606.04552 note links to a Springer book. The Springer book (978-981-97-5692-6) is presumably the ChiMamba source. In the reference manager, attach each claim to its own source. ChiMamba details (input, output format, resolution, window, split) are still to be extracted.
 

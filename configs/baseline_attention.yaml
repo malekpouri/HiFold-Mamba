@@ -3,7 +3,7 @@ name: baseline_attention
 model_type: hifold
 seed: 0
 model:
-  cell_dist_bias: false     # spec default; pending user decision (STATUS.md)
+  cell_dist_bias: true      # decided 2026-10-23 (line-specific residual P(s))
   mixer: attention
   attn_dim: 224
 data:

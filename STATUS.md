@@ -1,6 +1,6 @@
 # Status — resume here
 
-Last update: 2026-10-23. Details in `notes/` (latest: `2026-10-23_g1-profiling-reference.md`, `2026-10-23_g8-candidates.md`).
+Last update: 2026-10-23 (afternoon). Details in `notes/` (latest: `2026-10-23_g1-profiling-reference.md`, `2026-10-23_g8-candidates.md`).
 
 ## Where we are
 
@@ -11,19 +11,19 @@ Last update: 2026-10-23. Details in `notes/` (latest: `2026-10-23_g1-profiling-r
 | 3 Evaluation code | Done. Vectorised SCC (both variants), PCC, block bootstrap, insulation, AUROC/AP, `scripts/evaluate.py` |
 | 4 Baselines | Akita ported (746k params). Matched Transformer and matched CNN (parameter-matched, RC-equivariant). Locus-shared reference computed on test; global mean ready |
 | 5 Model | Done. Equivariance test passes, including the negative control |
-| 6 Structure losses | Insulation loss done. Boundary-loss form still open (architecture §6). Loop loss needs the G8 data |
+| 6 Structure losses | Insulation and boundary losses done. Loop loss needs the G8 data. Stage-2 weights not yet set |
 | 7 Runs | Next: Akita reproduction (`configs/akita_repro.yaml`, ~5 h locally) as soon as the cache is ready |
 
-Tests: **52/52 pass** (`CUDA_VISIBLE_DEVICES="" .venv/bin/python -m pytest -q tests`).
+Tests: **53/53 pass** (`CUDA_VISIBLE_DEVICES="" .venv/bin/python -m pytest -q tests`).
 
-## Decisions waiting for the user
+## Decisions (approved by the user 2026-10-23, recorded in `Roadmap.md`)
 
-1. **Primary SCC variant.** Benchmark code vs HiCRep. On real data they correlate only at ρ = 0.54 across windows. Checkpoint selection already follows CLAUDE.md (HiCRep).
-2. **H3 lines unsmoothed.** Recommended: keep the targets unchanged and report this as a limitation.
-3. **`cell_dist_bias`.** Recommended: on. Real targets show a line-specific residual P(s) (trough −0.17 to −0.30).
-4. **G8 sources.** Approve the boundary/loop table in `notes/2026-10-23_g8-candidates.md`.
-5. **Strong CNN definition.** Implemented as HiFold with a dilated-conv mixer (parameter-matched). Confirm, or name a published model instead.
-6. **Boundary loss form** (architecture §6, "before coding").
+1. Primary SCC = HiCRep weighting; benchmark-code SCC reported alongside.
+2. H3 lines: unsmoothed targets used unchanged (limitation).
+3. `cell_dist_bias` on (default and all configs).
+4. G8 table approved. Accessions are being resolved from 4DN, to be recorded in `docs/data_manifest.md`.
+5. Strong CNN = parameter-matched dilated-conv mixer.
+6. L_bnd = MSE on boundary-strength profiles (`train.boundary_loss`, config key `struct.bnd`).
 
 ## Commands
 

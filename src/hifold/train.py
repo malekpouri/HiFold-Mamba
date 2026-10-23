@@ -25,7 +25,7 @@ from hifold.data.dataset import ContactCache
 from hifold.eval import metrics as M
 from hifold.model.akita import Akita, AkitaConfig
 from hifold.model.hifold import HiFold, HiFoldConfig
-from hifold.structure import insulation
+from hifold.structure import boundary_strength_t, insulation
 
 N_TRIU = 99_681
 
@@ -57,6 +57,15 @@ def insulation_loss(pred_mat, tgt_mat, w):
     ip, it = insulation(pred_mat.float(), w), insulation(tgt_mat.float(), w)
     m = ~torch.isnan(it) & ~torch.isnan(ip)
     return ((torch.nan_to_num(ip) - torch.nan_to_num(it)) ** 2 * m).sum() / m.sum().clamp_min(1)
+
+
+def boundary_loss(pred_mat, tgt_mat, w, window=5):
+    """L_bnd (architecture §2): masked MSE between the boundary-strength profiles (depth of the log2
+    insulation dip relative to its +-window neighbourhood) of prediction and target, same operator on both."""
+    bp = boundary_strength_t(insulation(pred_mat.float(), w), window)
+    bt = boundary_strength_t(insulation(tgt_mat.float(), w), window)
+    m = ~torch.isnan(bt) & ~torch.isnan(bp)
+    return ((torch.nan_to_num(bp) - torch.nan_to_num(bt)) ** 2 * m).sum() / m.sum().clamp_min(1)
 
 
 # --- utilities -----------------------------------------------------------------------------
@@ -175,10 +184,18 @@ def train(cfg: dict):
             tv = y.permute(0, 2, 1)
             loss = contact_loss(pv, tv)
             parts = {"contact": loss.item()}
-            if struct_from is not None and step >= struct_from and lam.get("ins", 0) > 0:
-                li = insulation_loss(pred, from_triu(tv, mcfg.out_bins, iu), lam.get("w", 20))
-                loss = loss + lam["ins"] * li
-                parts["ins"] = li.item()
+            if struct_from is not None and step >= struct_from:
+                tm = None
+                if lam.get("ins", 0) > 0:
+                    tm = from_triu(tv, mcfg.out_bins, iu)
+                    li = insulation_loss(pred, tm, lam.get("w", 20))
+                    loss = loss + lam["ins"] * li
+                    parts["ins"] = li.item()
+                if lam.get("bnd", 0) > 0:
+                    tm = from_triu(tv, mcfg.out_bins, iu) if tm is None else tm
+                    lb = boundary_loss(pred, tm, lam.get("w", 20), lam.get("bnd_window", 5))
+                    loss = loss + lam["bnd"] * lb
+                    parts["bnd"] = lb.item()
             (loss / accum).backward()
             if (step + 1) % accum == 0:
                 torch.nn.utils.clip_grad_norm_(model.parameters(), cfg.get("clip", 1.0))

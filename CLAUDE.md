@@ -22,7 +22,7 @@ We predict Hi-C / Micro-C contact maps from DNA sequence (epigenomic inputs only
 
 ## Current phase
 
-**Phase 0, nearly closed: all G-items are decided (G1/G2 provisionally, pending inspection of the DNALongBench files). Remaining: read the ChiMamba chapter, verify the target against the files. Do not write code until the user explicitly asks for it.**
+**Implementation (Phases 1–7 of the Roadmap).** Coding was approved on 2026-10-21. G1/G2 are closed, and the six follow-up decisions were approved on 2026-10-23 (`Roadmap.md`). Resume from `STATUS.md`. Still open: ChiMamba chapter, compute budget, venue, H4 SV sources.
 
 ## Working rules for Claude
 
@@ -42,6 +42,7 @@ We predict Hi-C / Micro-C contact maps from DNA sequence (epigenomic inputs only
 | Target | DNALongBench processed target, unchanged. Documented (Akita paper) as natural-log O/E, clipped to [−2, 2], missing bins interpolated, Gaussian-smoothed; upper triangle with diagonal offset 2 (99,681 values per map). **Can be negative.** Verify against the files before any loss is written (G1). No log of the target or of predictions. Any transform used in a loss (e.g. for insulation) is applied **identically** to prediction and target |
 | Masking | NaN / masked bins never count in losses or metrics |
 | Symmetry | Built into the model (symmetrized pairwise head) |
+| SCC variant | HiCRep weighting primary; DNALongBench-code SCC reported alongside (decided 2026-10-23) |
 | Diagonal | Excluded as in DNALongBench/Akita |
 | Splits | **Never a random window-level split.** No validation/test region ever in (pre)training. H3 evaluation regions excluded from pretraining |
 | Augmentation / RC | The network is RC-equivariant by construction: $f(\mathrm{RC}(x)) = \mathrm{rot}_{180}(f(x))$. Shifts only if small or bin-aligned. No map transforms independent of the sequence |
@@ -62,7 +63,7 @@ We predict Hi-C / Micro-C contact maps from DNA sequence (epigenomic inputs only
 - Local GPU: **NVIDIA GeForce RTX 5050, 8 GB VRAM** (Blackwell), for development. Full runs probably need cloud/HPC (budget open).
 - **bf16 mixed precision only** + gradient checkpointing. Batch from profiling (1/2/4), effective batch 8–16 via accumulation.
 - Check `mamba-ssm` / `causal-conv1d` kernel support for this GPU before relying on them.
-- Environment manager and data path: TBD. Never commit data, coolers or checkpoints.
+- Environment: uv (`.venv`, Python 3.12, torch 2.14.1+cu130, `requirements.lock.txt`). Pure-PyTorch compiled selective scan (no nvcc, so no `mamba-ssm`). Data: `/mnt/storage/datasets/Human genomes Dataset/new_idea/datasets/dnalongbench/`. Never commit data, coolers or checkpoints.
 
 ## Directory layout (create only when needed)
 

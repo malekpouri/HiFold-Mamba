@@ -39,9 +39,9 @@ class HiFoldConfig:
     n_cells: int = 5
     cell_dim: int = 32
     dropout: float = 0.0
-    # Per-cell distance bias b_{c,|i-j|}. Off = the spec in docs/architecture.md (shared b_|i-j|).
+    # Per-cell distance bias b_{c,|i-j|} (on since 2026-10-23, docs/architecture.md). Off = shared b_|i-j|.
     # Without it the model cannot express cell-specific distance profiles (notes/2026-10-21_phase3-5.md).
-    cell_dist_bias: bool = False
+    cell_dist_bias: bool = True
     checkpoint: bool = True
     # Sequence mixer inside each block: "mamba" (HiFold) or the matched baselines "attention" / "conv".
     mixer: str = "mamba"

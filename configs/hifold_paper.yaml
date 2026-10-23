@@ -3,7 +3,7 @@ name: hifold_paper
 model_type: hifold
 seed: 0
 model:
-  cell_dist_bias: false     # spec default; pending user decision (STATUS.md)
+  cell_dist_bias: true      # decided 2026-10-23 (line-specific residual P(s))
 data:
   root: /mnt/storage/datasets/Human genomes Dataset/new_idea/datasets/dnalongbench/cache/akita5
   lines: [HFF, H1hESC, GM12878, IMR90, HCT116]

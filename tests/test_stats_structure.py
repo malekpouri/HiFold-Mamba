@@ -123,3 +123,25 @@ def test_auroc_and_ap():
     y = np.array([1, 0, 1, 0, 1])
     assert S.auroc(s, y) == pytest.approx(0.75)
     assert S.average_precision(s, y) == pytest.approx((1 + 2 / 3) / 2)
+
+
+def test_boundary_strength_torch_matches_numpy_and_loss_has_finite_grad():
+    import torch
+    from hifold.train import boundary_loss
+    rng = np.random.default_rng(1)
+    n, w = 120, 10
+    c = rng.normal(0, 0.5, (n, n))
+    c = (c + c.T) / 2
+    c[:60, :60] += 1.0
+    c[60:, 60:] += 1.0
+    ins = S.insulation_np(c, w)
+    ref = S.boundary_strength(ins, 5)
+    got = S.boundary_strength_t(torch.as_tensor(ins), 5).numpy()
+    assert np.allclose(got, ref, equal_nan=True)
+    assert np.nanargmax(got) == 60                       # strongest boundary at the domain border
+    t = torch.as_tensor(c, dtype=torch.float32)
+    p = (t + 0.3 * torch.randn_like(t)).requires_grad_()
+    lb = boundary_loss(p[None], t[None], w)
+    lb.backward()
+    assert lb.item() > 0 and torch.isfinite(p.grad).all()
+    assert boundary_loss(t[None], t[None], w).item() == 0

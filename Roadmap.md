@@ -108,17 +108,25 @@ The user asked for "whatever approach is best". Each choice is recorded here so 
 - **G9:** citations corrected; ChiMamba = related work pending the full chapter.
 - **G10:** the paper configuration is the 24–40 GB model; the 8 GB fallback is for development only and never reported.
 
+## Decided 2026-10-23 (user approved)
+
+- **G1/G2 closed:** target confirmed in Akita's `akita_data_read.py` and the files (`notes/2026-10-23_g1-profiling-reference.md`).
+- **Primary SCC:** HiCRep weighting; DNALongBench-code SCC reported alongside.
+- **H3 lines:** unsmoothed targets used unchanged; stated as a limitation.
+- **Per-cell distance bias** $b_{c,|i-j|}$ on.
+- **G8 source table** approved; accessions to be resolved and recorded in the manifest.
+- **Strong CNN:** parameter-matched dilated-conv mixer.
+- **$\mathcal{L}_{\text{bnd}}$:** MSE on boundary-strength profiles (`architecture.md` §2).
+
 ## Still open
 
 | # | Item | Status |
 |---|---|---|
-| G1/G2 | Confirm target transform, range, masks and offset in the DNALongBench files | Step 1, **blocks loss code** |
 | G9 | Read the ChiMamba chapter (paywalled) | Before training |
 | — | Compute environment and budget (cloud/HPC) | Open |
 | — | LICENSE copyright holder(s) | Authors' decision |
 | — | Target venue | Open |
 | — | SV data sources for H4 | Open |
-| — | Hyperparameters, conv stack, $\mathcal{L}_{\text{bnd}}$ form | Before coding |
 
 ## Risks
 
