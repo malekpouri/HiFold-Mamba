@@ -145,3 +145,24 @@ def test_boundary_strength_torch_matches_numpy_and_loss_has_finite_grad():
     lb.backward()
     assert lb.item() > 0 and torch.isfinite(p.grad).all()
     assert boundary_loss(t[None], t[None], w).item() == 0
+
+
+def test_against_each_requires_beating_every_baseline():
+    from hifold.eval.stats import against_each
+    rng = np.random.default_rng(5)
+    n = 300
+    windows = [("chr1", i * 1_000_000, i * 1_000_000 + 1_048_576) for i in range(n)]
+    blocks = S_block_ids(windows)
+    shared = rng.normal(0.5, 0.2, n)
+    ours = (shared + 0.05 + rng.normal(0, 0.03, n))[None]
+    weak = shared + rng.normal(0, 0.03, n)
+    strong = shared + 0.05 + rng.normal(0, 0.03, n)
+    ok, res = against_each(ours, np.stack([weak[None], weak[None]]), blocks, n_boot=500)
+    assert ok and all(r.success for r in res)
+    ok, res = against_each(ours, np.stack([weak[None], strong[None]]), blocks, n_boot=500)
+    assert not ok and res[0].success and not res[1].success
+
+
+def S_block_ids(windows):
+    from hifold.eval.stats import block_ids
+    return block_ids(windows)

@@ -16,9 +16,9 @@ link-citations: true
 
 **Background.** Sequence-to-contact-map models predict Hi-C and Micro-C maps from DNA alone, but their training objectives are pixel-wise, while the features that matter biologically (domain boundaries, insulation, loops) are summaries of the map. Loss terms built on such summaries have been used for Hi-C resolution enhancement, but whether they improve *sequence-based* prediction, judged against annotations that are independent of the training data, has not been tested under a pre-specified design. On the DNALongBench contact-map task the task-specific Akita model remains well ahead of general long-range DNA models (published stratum-adjusted correlation, SCC, 0.230 vs. 0.115–0.133).
 
-**Proposed study.** We pre-register four hypotheses for HiFold-Mamba, a sequence-only model (1,048,576 bp → 448 × 448 map at 2,048 bp) built from a reverse-complement (RC)-equivariant convolutional tower, RC-equivariant bidirectional Mamba blocks, a multi-scale state mixer and a symmetric pairwise head. **H1:** it exceeds the per-block best of three trained baselines (reproduced Akita, a parameter-matched Transformer and a parameter-matched dilated CNN) by ≥ 0.01 SCC. **H2:** a differentiable insulation and boundary constraint, computed from the predicted map with the same operator as from the observed map, improves boundary AUROC and loop AP on independent 4DN boundary calls and ENCODE CTCF ChIA-PET loops, without lowering SCC. **H3:** pretraining plus few-shot adaptation beats training from scratch on four held-out cell lines. **H4** (variant effects) is scoped by data availability. Tests use a paired block bootstrap over 237 one-megabase test blocks (one-sided α = 0.025).
+**Proposed study.** We pre-register four hypotheses for HiFold-Mamba, a sequence-only model (1,048,576 bp → 448 × 448 map at 2,048 bp) built from a reverse-complement (RC)-equivariant convolutional tower, RC-equivariant bidirectional Mamba blocks, a multi-scale state mixer and a symmetric pairwise head. **H1:** it exceeds **each** of three trained baselines (reproduced Akita, a parameter-matched Transformer and a parameter-matched dilated CNN) by ≥ 0.01 SCC. **H2:** a differentiable insulation and boundary constraint, computed from the predicted map with the same operator as from the observed map, improves boundary AUROC and loop AP on independent 4DN boundary calls and ENCODE CTCF ChIA-PET loops, without lowering SCC. **H3:** pretraining plus few-shot adaptation beats training from scratch on four held-out cell lines. **H4** (variant effects) is scoped by data availability. Tests use a paired block bootstrap over 237 one-megabase test blocks (one-sided α = 0.025).
 
-**Pilot data.** We verified the benchmark target against Akita's processing code and the released files, verified the full-network equivariance identity numerically, and profiled the model on an 8 GB GPU. On the test set a non-learned reference that copies the other cell lines' measured maps at the same locus scores SCC 0.227 with the benchmark's implementation, as high as published Akita (0.230). The benchmark and HiCRep SCC weightings rank windows only moderately concordantly (Spearman ρ = 0.54). A simulation calibrated on the pilot data shows ≥ 90% power for a true ΔSCC of 0.015–0.02, but only 43–52% at the 0.01 margin, which we report as a design constraint.
+**Pilot data.** We verified the benchmark target against Akita's processing code and the released files, verified the full-network equivariance identity numerically, and profiled the model on an 8 GB GPU. On the test set a non-learned reference that copies the other cell lines' measured maps at the same locus scores SCC 0.227 with the benchmark's implementation, as high as published Akita (0.230). The benchmark and HiCRep SCC weightings rank windows only moderately concordantly (Spearman ρ = 0.54). A simulation calibrated on the pilot data shows that the widely used per-block-best comparison against several baselines has essentially no power at this sample size, because the maximum of noisy baseline scores is biased upwards. We therefore test against each baseline (an intersection–union test), which reaches ≥ 90% power at a true ΔSCC of 0.02 under realistic between-model correlation but is under-powered at the 0.01 margin, a constraint we state in advance.
 
 **Keywords:** 3D genome; Hi-C; Micro-C; insulation; TAD boundaries; chromatin loops; state-space models; reverse-complement equivariance; registered report.
 
@@ -28,11 +28,11 @@ link-citations: true
 
 Chromosomes fold into compartments, topologically associating domains (TADs) and CTCF-anchored loops, and disruption of this folding by structural variants can rewire gene regulation [@rao2014; @krietenstein2020]. Hi-C and Micro-C measure folding genome-wide but are expensive per cell type and condition. Models that predict contact maps directly from DNA sequence therefore serve two purposes: they test how much of folding is encoded in sequence, and they allow in-silico perturbation of that sequence.
 
-Sequence-only models now span several scales. Akita predicts 448 × 448 maps at 2,048 bp from 1,048,576 bp of sequence with a convolutional tower and a 2D head [@fudenberg2020]. DeepC uses megabase-scale transfer learning [@schwessinger2020]. Orca predicts from kilobase to whole-chromosome scale [@zhou2022]. AlphaGenome predicts contact maps among thousands of tracks from 1 Mb of sequence [@avsec2026]. Models that add cell-type-specific inputs, for example C.Origami (sequence with CTCF and accessibility) [@tan2023] and Hi-Compass (accessibility only) [@sun2026], address cross-cell-type prediction, which sequence alone cannot.
+Sequence-only models now span several scales. Akita predicts 448 × 448 maps at 2,048 bp from 1,048,576 bp of sequence with a convolutional tower and a 2D head [@fudenberg2020]. DeepC uses megabase-scale transfer learning [@schwessinger2020]. Orca predicts from kilobase to whole-chromosome scale [@zhou2022]. AlphaGenome predicts contact maps among thousands of tracks from 1 Mb of sequence [@avsec2026]. Models that add cell-type-specific inputs, for example C.Origami (sequence with CTCF and accessibility) [@tan2023] and Hi-Compass (sequence and a generalized CTCF profile, with chromatin accessibility as the only cell-type-specific input) [@sun2026], address cross-cell-type prediction, which sequence alone cannot.
 
 ## 1.2 What is not known
 
-**(i) Whether objectives defined on map-level structure help sequence-based prediction.** Sequence-to-map models are trained with pixel-wise losses (mean squared error for Akita and the DNALongBench baselines [@fudenberg2020; @cheng2025]). The biologically important outputs are summaries of the map: insulation profiles, boundary positions and loop calls. Structure-aware losses exist in neighbouring problems. VEHiCLE, a Hi-C resolution-enhancement network, adds an insulation-vector loss and a loss on its derivative (a "delta" vector marking boundaries) [@highsmith2021]. Hi-Compass adds a structural-similarity (SSIM) term to an accessibility-based predictor [@sun2026]. Two things are untested: whether such terms help when the input is sequence alone and the target is a distance-normalized log observed/expected (O/E) map, and whether any gain survives evaluation against boundaries and loops that were not derived from the training data. A model whose insulation term is scored with boundaries called from its own training maps is graded partly on what it was told to fit.
+**(i) Whether objectives defined on map-level structure help sequence-based prediction.** The sequence-to-map models whose objectives we could verify, Akita and the DNALongBench baselines, are trained with a pixel-wise mean squared error [@fudenberg2020; @cheng2025]. The biologically important outputs are summaries of the map: insulation profiles, boundary positions and loop calls. Structure-aware losses exist in neighbouring problems. VEHiCLE, a Hi-C resolution-enhancement network, adds an insulation-vector loss and a loss on its derivative (a "delta" vector marking boundaries) [@highsmith2021]. Hi-Compass adds a structural-similarity (SSIM) term to an accessibility-based predictor [@sun2026]. Two things are untested: whether such terms help when the input is sequence alone and the target is a distance-normalized log observed/expected (O/E) map, and whether any gain survives evaluation against boundaries and loops that were not derived from the training data. A model whose insulation term is scored with boundaries called from its own training maps is graded partly on what it was told to fit.
 
 **(ii) How strong current sequence-only predictions are, relative to what a locus alone explains.** On DNALongBench's contact-map task, Akita reaches SCC 0.230 averaged over its five cell lines, and HyenaDNA and Caduceus 0.115–0.133 [@cheng2025] (Table 4 there). Contact maps are partly shared across cell types. How much of the published accuracy is cell-type-specific is not reported. It matters for interpreting any gain (Section 3.3).
 
@@ -46,7 +46,7 @@ Contributions, conditional on the pre-registered outcomes:
 
 1. A **pre-registered test (H2) of a map-level insulation and boundary constraint** for sequence-based contact-map prediction. The constraint is computed from the predicted map with exactly the operator applied to the observed map, adapted from the insulation-loss idea of VEHiCLE [@highsmith2021] to a log-O/E target. It is evaluated on **independent** boundary and loop annotations, with the accessions fixed in this protocol.
 2. An **RC-equivariant network end to end**: tower, state-space blocks, multi-scale mixer, pairwise head, FiLM cell adapter and per-cell distance bias. f(RC(x), c) = rot₁₈₀ f(x, c) holds exactly and is verified numerically (pilot, Section 3.2).
-3. A **statistical design** for this benchmark: per-block best baseline, paired block bootstrap, a simulation-based power analysis, locus-shared references kept outside the comparison set, and conditional claims fixed in advance (Section 2.15).
+3. A **statistical design** for this benchmark: a paired block bootstrap with an intersection–union comparison against every trained baseline, a simulation showing that the common per-block-maximum comparison has no power at this sample size, locus-shared references kept outside the comparison set, and conditional claims fixed in advance (Section 2.15).
 4. Pilot measurements of independent interest: a non-learned locus-shared reference that matches published Akita on the benchmark metric, and a moderate disagreement between two SCC weightings in common use (Section 3.3).
 
 # 2. Methods
@@ -106,14 +106,14 @@ The two matched models share the conv tower, FiLM adapter, mixer, head, data, op
 
 **Not in $\mathcal{B}$.**
 
-* **Caduceus-Ph/PS and HyenaDNA.** Their published DNALongBench scores (SCC 0.115–0.133 [@cheng2025]) are far below Akita's, so they cannot be the per-block best often enough to change the H1 test. Fine-tuning them at 1 Mb context is outside our compute budget (Section 4). They appear in the results only as published context.
+* **Caduceus-Ph/PS and HyenaDNA.** Their published DNALongBench scores (SCC 0.115–0.133 [@cheng2025]) are far below Akita's, which is in $\mathcal{B}$. Fine-tuning them at 1 Mb context is outside our compute budget (Section 4). They appear in the results only as published context.
 * **Non-learned references, reported for context and never in $\mathcal{B}$.** (a) The *global cell-line mean*: the mean training map of the line, the same prediction for every window. (b) The *locus-shared mean*: the mean of the **other** four training lines' measured maps at the same window. (c) The same with a per-line offset. Because (b) and (c) use measured test-region maps, they are oracle-style references for how cell-type-shared a map is, not sequence predictors.
 
-Every retrained model receives the same EMA (decay 0.999), checkpoint-selection rule and tuning budget (no tuning beyond the published or matched settings). The Akita reproduction is checked against its published per-line scores [@cheng2025] on the benchmark metric.
+Every retrained model receives the same EMA (decay 0.999), checkpoint-selection rule and tuning budget (no tuning beyond the published or matched settings). The Akita reproduction is checked against its published per-line scores [@cheng2025] on the benchmark metric. It counts as reproduced if its five-line mean test SCC (benchmark implementation) is within 0.02 of the published 0.230. A larger gap is reported as a deviation, with the published values shown alongside, and the reproduced Akita stays in $\mathcal{B}$ either way.
 
 ## 2.5 Training
 
-AdamW (weight decay 0.01), learning rate 3 × 10⁻⁴, 1,000-step warmup, cosine decay. bf16 autocast, with the selective scan in fp32. Gradient checkpointing; batch 1 window × 5 lines with 8-step accumulation (effective 8 windows). 70,080 steps, i.e. 10 passes over 7,008 windows. RC-equivariant models need no RC augmentation. All models use ±11 bp shift augmentation with N padding. **Checkpoint selection:** EMA weights with the highest mean validation SCC (HiCRep weighting, Section 2.7), evaluated every 7,008 steps. Three seeds (0, 1, 2) per model. Every run logs its configuration, configuration hash and git commit.
+AdamW (weight decay 0.01), learning rate 3 × 10⁻⁴, 1,000-step warmup, cosine decay. bf16 autocast, with the selective scan in fp32. Gradient checkpointing; batch 1 window × 5 lines with 8-step accumulation (effective 8 windows). 70,080 steps, i.e. 10 passes over 7,008 windows. RC-equivariant models need no RC augmentation. All models use ±11 bp shift augmentation with N padding. **Checkpoint selection:** EMA weights with the highest mean validation SCC (HiCRep weighting, Section 2.7), evaluated every 7,008 steps. "HiFold-Mamba" in H1, H3 and the ablations means the *Base* arm (contact loss only, Section 2.6), selected this way. For H2 only, both arms are compared at their **final** EMA weights (step 70,080). Otherwise validation selection could return a Struct checkpoint from before the structural terms were switched on, which would make H2 null by construction. Three seeds (0, 1, 2) per model. Every run logs its configuration, configuration hash and git commit.
 
 ## 2.6 Structural objective (H2)
 
@@ -125,7 +125,7 @@ with $\mathcal L_{\text{contact}}$ the masked MSE over the 99,681 upper-triangle
 
 **Schedule (equal compute).** The *Base* arm trains with $\mathcal L_{\text{contact}}$ for all 70,080 steps. The *Struct* arm is identical, with the same seeds, up to step 52,560, and then adds the structural terms for the remaining 17,520 steps. Total optimizer steps are identical.
 
-**Choice of λ (pre-registered rule).** On a 1-seed pilot using **validation windows only**, we train the Struct arm for each (λ_ins, λ_bnd) ∈ {0.1, 0.3, 1.0}². Among settings whose validation SCC is within 0.005 of the Base pilot, we select the one with the highest validation AUROC against the independent boundaries (Section 2.8). Ties go to the smaller λ_ins + λ_bnd. If no setting meets the SCC condition, we take the smallest pair. The selected pair is then fixed for all seeds and for the test evaluation.
+**Choice of λ (pre-registered rule).** On a 1-seed pilot using **validation windows only**, we train the Struct arm for each (λ_ins, λ_bnd) ∈ {0.1, 0.3, 1.0}². Among settings whose validation SCC is within 0.005 of the Base pilot, we select the one with the highest validation AUROC against the independent boundaries (Section 2.8). The selection uses the same boundary datasets as the H2 evaluation, but only in validation regions, which are disjoint from the test regions. Ties go to the smaller λ_ins + λ_bnd. If no setting meets the SCC condition, we take the smallest pair. The selected pair is then fixed for all seeds and for the test evaluation.
 
 **No loop term in v1.** An earlier internal plan included a loop loss. We drop it, because its only usable positives would come from the same ChIA-PET datasets used to evaluate loops, which would make H2's loop criterion partly self-supervised. H2's loop criterion therefore tests whether insulation and boundary constraints *transfer* to loops.
 
@@ -149,8 +149,8 @@ Accessions were fixed and data downloaded (MD5-verified) before any model was tr
 
 None of these datasets is the source of a training target. For four of the five lines they come from a different laboratory.
 
-* **Boundaries.** We use the shipped 4DN boundary calls as the primary set, with no caller of our own. Their calling method (an insulation-score pipeline) is of the same family as our operator, which we state as a limitation. A bin is a positive if its 2,048 bp interval overlaps a called boundary interval extended by one bin on each side. All other scorable bins are negatives. The score is s_i of the **predicted** map (Section 2.6). AUROC and average precision are computed per line over all scorable test bins (i ∈ [w + 5, 448 − w − 5)).
-* **Loops.** Positives are ChIA-PET PET clusters with **PET count ≥ 10** whose anchors' midpoints fall in two different output bins inside the same window, at separation 20 kb–915 kb. Negatives are all other bin pairs within the same windows, matched to positives on separation in 10 log-spaced distance bins (five negatives per positive). The score is the predicted map value at the pair. Loop AP is computed per line and then averaged over the four lines that have loops.
+* **Boundaries.** We use the shipped 4DN boundary calls as the primary set, with no caller of our own. Their calling method (an insulation-score pipeline) is of the same family as our operator, which we state as a limitation. A bin is a positive if its 2,048 bp interval overlaps a called boundary interval (Strong and Weak calls alike) extended by one bin on each side. All other scorable bins are negatives. The score is s_i of the **predicted** map (Section 2.6). A window scores bins i ∈ [w + 5, 448 − w − 5). Test windows overlap, so each genomic bin is one item: its score is the mean of s_i over every test window that scores it, then over seeds.
+* **Loops.** Positives are ChIA-PET PET clusters with **PET count ≥ 10** whose anchors' midpoints fall in two different output bins inside the same window, at separation 20 kb–915 kb. Negatives are all other bin pairs within the same windows, matched to positives on separation in 10 log-spaced distance bins (five negatives per positive). The score is the predicted map value at the pair, averaged over every test window that contains both bins, then over seeds. Each genomic pair is one item.
 * **Secondary, assay-orthogonal set (reported, not tested).** ENCODE CTCF ChIP-seq peaks containing a CTCF motif.
 * **Internal consistency only.** Boundaries called from the observed DNALongBench maps by our own operator.
 
@@ -160,23 +160,27 @@ All confirmatory tests use one procedure:
 
 1. Score each test window, cell line, model and seed. Average over the five lines, then over the three seeds.
 2. Assign each window to the 1 Mb genomic block containing its midpoint (237 blocks in the test set) and average within blocks. Blocks, not windows, are the resampling unit, because windows overlap and neighbouring loci are correlated.
-3. For H1: Δ_b = S_ours,b − max_{m∈$\mathcal{B}$} S_m,b. The per-block maximum is a conservative choice that prevents post-hoc selection of the weakest baseline.
-4. Paired bootstrap over blocks, 10,000 resamples. One-sided test of H₀: E[Δ] ≤ 0 at α = 0.025, with the 95% percentile interval. Its lower limit is the 97.5% one-sided bound. The p-value is (1 + #{Δ* ≤ 0}) / (B + 1).
+3. For H1: Δ_{m,b} = S_ours,b − S_m,b separately for **each** m ∈ $\mathcal{B}$ (intersection–union test, below).
+4. Paired bootstrap over blocks, 10,000 resamples, using the same resamples for every comparison. One-sided test of H₀: E[Δ] ≤ 0 at α = 0.025, with the 95% percentile interval. Its lower limit is the 97.5% one-sided bound. The p-value is (1 + #{Δ* ≤ 0}) / (B + 1).
 
 **Criteria.**
 
 | Hypothesis | Success requires |
 |---|---|
-| H1 | mean Δ ≥ +0.01 **and** lower bound > 0 |
-| H2 | **all three hold** (intersection–union, so no multiplicity correction): (a) Struct − Base independent-boundary AUROC ≥ +0.02 with lower bound > 0, with the block bootstrap applied to per-block AUROC contributions via paired resampling of blocks and recomputing AUROC on the resampled bin set; (b) loop AP ≥ +0.02, same procedure; (c) SCC non-inferiority: lower bound of Δ SCC(Struct − Base) > −0.005 |
+| H1 | against **every** m ∈ $\mathcal{B}$: mean Δ_m ≥ +0.01 **and** lower bound > 0. An intersection–union test, so the level is α with no correction (`stats.against_each`). It replaces a per-block-maximum rule that the power analysis showed to be unpassable (Section 2.10) |
+| H2 | **all three hold** (intersection–union, so no multiplicity correction): (a) Struct − Base independent-boundary AUROC ≥ +0.02 with lower bound > 0. AUROC is computed per line over that line's items (Section 2.8), then averaged over the five lines. Each bootstrap resample draws blocks with replacement, shared across lines and arms. An item enters with weight equal to the number of times its block (that of its bin, or of the pair's midpoint) was drawn, and AUROC is recomputed exactly under these weights (`structure_eval.paired_block_bootstrap_metric`). (b) Loop AP ≥ +0.02, same procedure, averaged over the four lines with loop data; (c) SCC non-inferiority: lower bound of Δ SCC(Struct − Base) > −0.005 |
 | H3 | Δ_H3 = SCC(pretrain + few-shot) − SCC(scratch), per held-out line and limited regime (10 %, 25 %, 50 %), Holm-corrected over the three regimes within a line. Success requires a positive one-sided bound in at least one regime in **at least two of the four** lines |
 | Multi-scale (N-M) | H1 met **and** Δ SCC(full − no-mixer ablation) has a lower bound > 0 |
 
-A per-window Wilcoxon signed-rank test is reported as a secondary, anti-conservative check only.
+A per-window Wilcoxon signed-rank test is reported as a secondary, anti-conservative check only. **Block-size sensitivity:** every confirmatory test is repeated with 3 Mb blocks. Windows straddle 1 Mb block borders, so residual dependence may make 1 Mb intervals slightly narrow. Disagreements are reported but do not change the decision.
+
+**The margins and their scale.** The H1 margin of 0.01 is on the primary (HiCRep) scale, where the locus-shared reference scores 0.53. It is the smallest gain we would consider worth reporting: about 2 % of the reference level, and similar to the spread between published foundation-model variants on this task [@cheng2025]. The H2 margins (+0.02 AUROC and AP) are set at the same order of magnitude relative to their chance levels.
+
+**Error control across hypotheses.** H1, H2, H3 and N-M support distinct claims, each with its own conclusion and title rule (Section 2.15). Each is tested at one-sided α = 0.025 with no correction across hypotheses. Within hypotheses, H1 and H2 are intersection–union tests (level α by construction), H3 is Holm-corrected within each line, and N-M is gated by H1 (a fixed-sequence test). Every outcome is reported whatever its direction, so no claim depends on choosing among tests after the fact.
 
 ## 2.10 Sample size and power
 
-The test set is fixed by the benchmark (413 windows in 237 blocks), so the question is the sensitivity of the design, not the sample size. We simulated block-level paired differences with the between-block standard deviation observed in the pilot (0.193, HiCRep SCC of the locus-shared reference averaged over lines). The between-model correlation was set to ρ ∈ {0.8, 0.9, 0.95, 0.98}, and we applied the full H1 rule (2,000 simulations × 2,000 bootstrap resamples; `scripts/power_analysis.py`).
+The test set is fixed by the benchmark (413 windows in 237 blocks), so the question is the sensitivity of the design, not the sample size. We simulated block means for our model and the baselines with the between-block standard deviation observed in the pilot (0.193, HiCRep SCC of the locus-shared reference averaged over lines). Models were equicorrelated with ρ ∈ {0.8, 0.9, 0.95, 0.98}, and we applied the full H1 rule (2,000 simulations × 2,000 bootstrap resamples; `scripts/power_analysis.py`). Single-comparator power:
 
 | True Δ | ρ = 0.8 | ρ = 0.9 | ρ = 0.95 | ρ = 0.98 |
 |---|---|---|---|---|
@@ -187,11 +191,23 @@ The test set is fixed by the benchmark (413 windows in 237 blocks), so the quest
 | 0.020 | 0.71 | 0.95 | 0.99 | 1.00 |
 | 0.030 | 0.96 | 1.00 | 1.00 | 1.00 |
 
-The false-positive rate stays at or below α. Because H1 requires the **point estimate** to reach +0.01, power at a true effect of exactly 0.01 cannot exceed about 0.5. The design reaches ≥ 0.9 power for true effects of 0.015 (ρ ≥ 0.95) to 0.02 (ρ = 0.9). The paired-model correlation ρ is unknown before training. It will be estimated on **validation** windows from the Akita reproduction and the first HiFold seed, and reported with the power table, before any test evaluation. We keep the 0.01 margin, set as the smallest gain worth reporting, and state openly that a non-significant result at that size is inconclusive, not evidence of no effect.
+The false-positive rate stays at or below α. Because H1 requires the **point estimate** to reach +0.01, power at a true effect of exactly 0.01 cannot exceed about 0.5.
+
+**Three baselines.** We first simulated the rule originally planned, Δ_b = S_ours,b − max_m S_m,b, with three baselines that are each worse than ours by the true Δ. Its power was **0.00 for every Δ ≤ 0.02 and every ρ**, and 0.08 at Δ = 0.03 (ρ = 0.98) (`results/pilot/power_h1_max3.tsv`). Most blocks hold one or two windows. The maximum of three noisy block means therefore exceeds their common mean by about 0.85 σ(1 − ρ)^½, i.e. 0.02–0.04 SCC, which is larger than any realistic gain. We replaced it with the intersection–union rule. Its worst-case power, with three equally strong baselines, is:
+
+| True Δ (vs. each) | ρ = 0.8 | ρ = 0.9 | ρ = 0.95 | ρ = 0.98 |
+|---|---|---|---|---|
+| 0 | 0.001 | 0.003 | 0.001 | 0.000 |
+| 0.010 | 0.08 | 0.19 | 0.26 | 0.24 |
+| 0.015 | 0.22 | 0.56 | 0.76 | 0.94 |
+| 0.020 | 0.49 | 0.88 | 0.99 | 1.00 |
+| 0.030 | 0.91 | 1.00 | 1.00 | 1.00 |
+
+When the baselines differ in strength, only the strongest constrains the result, and power approaches the single-comparator table. The design therefore has ≥ 0.9 power for a true advantage of about 0.02 over every baseline when ρ ≥ 0.95 (Fig. 2c). The paired-model correlation ρ is unknown before training. It will be estimated on **validation** windows from the Akita reproduction and the first HiFold seed, and reported with the power table, before any test evaluation. We keep the 0.01 margin, set as the smallest gain worth reporting, and state openly that a non-significant result at that size is inconclusive, not evidence of no effect.
 
 ## 2.11 H3: few-shot adaptation to held-out lines
 
-For each held-out line (HAP1, HeLa, HepG2, K562), the **pretrain arm** starts from the selected five-line HiFold-Mamba checkpoint (seed-matched) with a new cell embedding and a new distance-bias row, and fine-tunes all weights. The **scratch arm** has the same architecture with random initialization. Both arms use identical data and identical optimizer steps: 3,504 steps, batch 1, 8-step accumulation, learning rate 1 × 10⁻⁴ with 200-step warmup and cosine decay. Fine-tuning data are contiguous-block subsets (10 %, 25 %, 50 % of the line's official training windows, selected by contig, identical across arms), plus the full training set (reported, not counted toward success). Evaluation is on the line's **official test windows**, aggregated into 1 Mb blocks (these windows overlap at 32 kb stride). Three seeds per arm. Read-depth-limited regimes are out of scope (they would need reprocessing from read pairs).
+For each held-out line (HAP1, HeLa, HepG2, K562), the **pretrain arm** starts from the selected five-line HiFold-Mamba Base checkpoint (seed-matched) with a new cell embedding and a new distance-bias row, and fine-tunes all weights. The **scratch arm** has the same architecture with random initialization. Both arms use identical data and identical optimizer steps: 3,504 steps, batch 1, 8-step accumulation, learning rate 1 × 10⁻⁴ with 200-step warmup and cosine decay. Fine-tuning data are contiguous-block subsets (10 %, 25 %, 50 % of the line's official training windows, selected by contig, identical across arms), plus the full training set (reported, not counted toward success). Evaluation is on the line's **official test windows**, aggregated into 1 Mb blocks (these windows overlap at 32 kb stride). Three seeds per arm. Read-depth-limited regimes are out of scope (they would need reprocessing from read pairs). **Zero-shot reference (secondary, not a criterion).** The pretrained model with the held-out line's embedding set to the mean of the five training embeddings and no fine-tuning. Reporting Δ(pretrain + few-shot − zero-shot) shows whether adaptation adds anything beyond the pretrained model's prior. Equal-compute comparison with scratch is the conventional test of transfer, but it can favour pretraining by design.
 
 ## 2.12 H4: structural variants
 
@@ -241,7 +257,7 @@ Safeguards:
 
 | Question | Hypothesis | Sampling plan | Analysis plan | Rationale for test sensitivity | Interpretation given different outcomes | Theory that could be shown wrong |
 |---|---|---|---|---|---|---|
-| Does HiFold-Mamba predict maps more accurately than the strongest trained sequence model per locus? | H1: mean block ΔSCC ≥ 0.01 vs. per-block best of $\mathcal{B}$ | Official test set, 413 windows / 237 blocks; 3 seeds per model | Section 2.9 block bootstrap, one-sided α = 0.025 | Power ≥ 0.9 at true Δ 0.015–0.02 (Section 2.10); 0.43–0.52 at 0.01 | Met: accuracy claim. Not met: no accuracy claim; encoder comparison reported as null | That sequence-mixer choice inside an identical network changes accuracy |
+| Does HiFold-Mamba predict maps more accurately than every trained sequence baseline? | H1: mean block ΔSCC ≥ 0.01 vs. **each** member of $\mathcal{B}$ | Official test set, 413 windows / 237 blocks; 3 seeds per model | Section 2.9 block bootstrap, intersection–union, one-sided α = 0.025 | Worst-case power ≥ 0.9 at true Δ ≈ 0.02 (ρ ≥ 0.95; Section 2.10); ≤ 0.26 at 0.01 | Met: accuracy claim. Not met: no accuracy claim; encoder comparison reported as null | That sequence-mixer choice inside an identical network changes accuracy |
 | Does a map-level insulation and boundary constraint improve structural recovery? | H2: AUROC ≥ +0.02, loop AP ≥ +0.02, SCC non-inferior | Same windows; independent boundaries (5 lines) and loops (4 lines) | Struct vs. Base, equal steps, Section 2.9 | Same blocks; joint criterion | Met: insulation-constrained claim. Not met: claim removed, reported as null | That map-derived structure losses add information beyond pixel-wise MSE for sequence models |
 | Does pretraining transfer to unseen cell lines with little data? | H3 | 4 held-out lines × 3 regimes, 3 seeds per arm | Δ_H3 per line, Holm within line; ≥ 2 of 4 lines | Equal compute and data per arm | Met: few-shot claim. Not met: no transfer claim | That sequence-learned folding grammar transfers across cell types through a cell embedding alone |
 | Does multi-scale mixing contribute? | N-M | As H1 | Full vs. no-mixer, Section 2.9 | As H1 | Met with H1: multi-scale claim | That combining depths and scales helps beyond the deepest state |
@@ -259,7 +275,7 @@ All pilot numbers come from logged scripts in the repository. None involves a tr
 
 ## 3.2 Implementation checks
 
-* **Equivariance.** All equivariance tests pass in fp32 (10⁻⁴ / 10⁻⁵), including the full-length network on real sequence. The negative control (unpaired head) is detected. The − RC ablation is verified to break equivariance while keeping the outputs symmetric. In total, 55 unit tests pass at the protocol commit.
+* **Equivariance.** All equivariance tests pass in fp32 (10⁻⁴ / 10⁻⁵), including the full-length network on real sequence. The negative control (unpaired head) is detected. The − RC ablation is verified to break equivariance while keeping the outputs symmetric. In total, 63 unit tests pass at the protocol commit, including the H1 intersection–union test and the exact weighted AUROC/AP used for H2.
 * **Metrics.** The vectorized benchmark SCC reproduces the released loop implementation exactly. HiCRep SCC is tested against a direct implementation.
 * **Compute** (RTX 5050, 8 GB, bf16, one window × five lines): HiFold-Mamba 1.34 s per step at 3.84 GiB peak; matched Transformer 0.50 s; matched CNN 0.47 s; Akita 0.25 s per step at batch 2 (4.73 GiB).
 
@@ -271,15 +287,17 @@ All pilot numbers come from logged scripts in the repository. None involves a tr
 | Locus-shared mean (other four lines' measured maps) | 0.531 | 0.227 | 0.582 |
 | *Akita, published [@cheng2025]* | — | *0.230* | — |
 
+The published value is compared under the assumption that DNALongBench computed it with the `scc` function of its released code, which we use verbatim. The paper reports SCC without giving the implementation.
+
 Three findings shape the design (Fig. 2):
 
 1. **The global mean is uninformative in this target space.** After O/E normalization, a line's average map is nearly flat within every distance stratum, so its SCC is ≈ 0. "Beating the global mean" is therefore only a sanity floor, not a meaningful bar.
 2. **A non-learned, locus-only reference matches published Akita on the benchmark metric.** Per line: HFF 0.248 vs. 0.258, H1 0.223 vs. 0.247, GM12878 0.216 vs. 0.227, IMR-90 0.240 vs. 0.210, HCT116 0.207 vs. 0.210 (Fig. 2a). Much of the measurable signal is shared across cell types at a locus. The reference uses measured maps, so it is not a competitor. But it shows that benchmark-level accuracy alone does not establish cell-type-specific prediction, which is why H3 and the per-line analyses are part of the design.
 3. **The two SCC weightings disagree moderately** (Spearman ρ = 0.54 across 2,065 window–line pairs; Fig. 2b). The benchmark implementation weights long-distance strata about uniformly, while HiCRep weights by stratum size and variance. Model rankings can therefore depend on the variant. We pre-register HiCRep as primary and report both.
 
-![**Fig. 1 | HiFold-Mamba and the structural objective.** Left: architecture (every component RC-equivariant) and the training objective. Right: a validation target map (HFF) and the boundary-strength profile s_i computed from it with the operator used in the loss and in evaluation.](figures/fig1_schematic.pdf){width=100%}
+![**HiFold-Mamba and the structural objective.** Left: architecture (every component RC-equivariant) and the training objective. Right: a validation target map (HFF) and the boundary-strength profile s_i computed from it with the operator used in the loss and in evaluation.](figures/fig1_schematic.pdf){width=100%}
 
-![**Fig. 2 | Pilot data on the test set (no trained model).** **a**, Per-line SCC (benchmark implementation) of the locus-shared reference (measured maps of the other four lines) against published Akita [@cheng2025] and the global cell-line mean. **b**, Per-window agreement of the two SCC weightings for the locus-shared reference. **c**, Simulated probability that the pre-registered H1 rule succeeds, as a function of the true block-wise ΔSCC, for four paired-model correlations; dashed: 0.9; dotted: the 0.01 margin.](figures/fig2_pilot.pdf){width=100%}
+![**Pilot data on the test set (no trained model).** **a**, Per-line SCC (benchmark implementation) of the locus-shared reference (measured maps of the other four lines) against published Akita [@cheng2025] and the global cell-line mean. **b**, Per-window agreement of the two SCC weightings for the locus-shared reference. **c**, Simulated probability that the H1 rule succeeds as a function of the true ΔSCC (ρ = 0.95; 237 blocks). Three comparison rules are shown: a single baseline; each of three equally strong baselines (intersection–union, adopted); and the per-block maximum of three, which never succeeds. Dashed line: 0.9; dotted line: the 0.01 margin.](figures/fig2_pilot.pdf){width=100%}
 
 # 4. Timeline and compute
 
@@ -295,7 +313,7 @@ On the authors' RTX 5050 (8 GB), the confirmatory programme needs about:
 | Window sensitivity, robustness split (1 seed) | — | ≈ 100 |
 | **Total** | | **≈ 640** |
 
-That is about four weeks of continuous single-GPU time. The Akita reproduction (training and validation only) has started. Stage 2 submission is planned within six months of in-principle acceptance.
+That is about four weeks of continuous single-GPU time. The Akita reproduction (training and validation only) is queued on the shared GPU. Stage 2 submission is planned within six months of in-principle acceptance.
 
 # 5. Limitations (stated before outcomes)
 
@@ -303,7 +321,7 @@ That is about four weeks of continuous single-GPU time. The Akita reproduction (
 2. **Sequence only.** Without cell-type-specific inputs, prediction for an unseen line needs adaptation data (H3). Zero-shot transfer would require epigenomic inputs.
 3. **Annotation independence is partial.** The independent boundaries come from an insulation-family caller, and for HFF from the same laboratory as the training target. Some boundary sets are shallow dilution Hi-C at 10 kb. HFF has no independent loop set.
 4. **Held-out lines are unsmoothed**, so their absolute SCC is not comparable with the training lines.
-5. **Sensitivity.** H1 is under-powered at exactly the 0.01 margin (Section 2.10).
+5. **Sensitivity.** H1 is under-powered at exactly the 0.01 margin, more so against three equally strong baselines (Section 2.10). A non-significant H1 at that size is inconclusive.
 6. **Benchmark split.** Random virtual contigs. The chromosome-held-out analysis is secondary.
 7. **Encoder precedent.** RC-equivariant bidirectional Mamba follows Caduceus; the structural constraint itself adapts VEHiCLE's insulation loss to a new setting.
 
@@ -311,7 +329,7 @@ That is about four weeks of continuous single-GPU time. The Akita reproduction (
 
 **Data availability.** All data are public: DNALongBench (doi:10.7910/DVN/AZM25S, CC0); 4DN boundary files and ENCODE ChIA-PET files with the accessions in Section 2.8. Checksums and access dates are in `docs/data_manifest.md`.
 
-**Code availability.** <https://github.com/malekpouri/HiFold-Mamba>: model, baselines, training, evaluation, statistics, tests and configurations. Licence and copyright holder to be confirmed by the authors.
+**Code availability.** <https://github.com/malekpouri/HiFold-Mamba>: model, baselines, training, evaluation, statistics, tests and configurations. Environment: Python 3.12.14, PyTorch 2.14.1 (CUDA 13.0), NumPy 2.5.4, SciPy 1.18.1, pinned in `requirements.lock.txt` and `uv.lock`. Hardware: NVIDIA RTX 5050 (8 GB). The selective scan is a pure-PyTorch implementation, so no custom CUDA kernels are needed. Licence and copyright holder to be confirmed by the authors.
 
 **Author contributions (CRediT).** To be confirmed by both authors before submission.
 

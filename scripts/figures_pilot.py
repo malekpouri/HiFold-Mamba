@@ -28,6 +28,8 @@ def main(out):
     ls = pd.read_csv("results/reference/locus_shared_test.tsv", sep="\t")
     gm = pd.read_csv("results/reference/global_mean_test.tsv", sep="\t")
     pw = pd.read_csv("results/pilot/power_h1.tsv", sep="\t")
+    iut = pd.read_csv("results/pilot/power_h1_iut3.tsv", sep="\t")
+    mx = pd.read_csv("results/pilot/power_h1_max3.tsv", sep="\t")
     fig, ax = plt.subplots(1, 3, figsize=(7.4, 2.7), gridspec_kw=dict(width_ratios=[1.25, 1, 1]))
 
     a = ax[0]
@@ -53,12 +55,15 @@ def main(out):
     b.set_title("b  Two SCC weightings disagree", loc="left", fontsize=8.5, color=INK)
 
     c = ax[2]
-    for r, col in zip(sorted(pw.rho.unique()), RAMP):
-        s = pw[pw.rho == r]
-        c.plot(s.true_delta, s.p_success, color=col, lw=2, marker="o", ms=3.5, label=f"ρ = {r}")
+    r = 0.95
+    for lab, d, col in [("one baseline", pw, RAMP[0]), ("each of 3 (IUT; adopted)", iut, RAMP[3]),
+                        ("per-block max of 3", mx, ORANGE)]:
+        t = d[d.rho == r]
+        c.plot(t.true_delta, t.p_success, color=col, lw=2, marker="o", ms=3.5, label=lab)
     c.axhline(0.9, color=MUTED, lw=0.8, ls="--"); c.axvline(0.01, color=MUTED, lw=0.8, ls=":")
-    c.set_xlabel("True block-wise ΔSCC"); c.set_ylabel("P(H1 success)")
-    c.legend(frameon=False, fontsize=6.5, title="paired-model corr.", title_fontsize=6.5, loc="upper left", bbox_to_anchor=(1.0, 1.0))
+    c.set_xlabel("True ΔSCC vs. every baseline"); c.set_ylabel("P(H1 success)")
+    c.legend(frameon=False, fontsize=6.5, title=f"comparison rule (ρ = {r})", title_fontsize=6.5,
+             loc="upper left", bbox_to_anchor=(1.0, 1.0))
     c.grid(color=GRID, linewidth=0.6); c.set_axisbelow(True)
     c.set_title(f"c  Power, {int(pw.n_blocks[0])} blocks", loc="left", fontsize=8.5, color=INK)
 

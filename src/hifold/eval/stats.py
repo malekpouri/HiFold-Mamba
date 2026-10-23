@@ -76,6 +76,20 @@ def paired_bootstrap(a: np.ndarray, b: np.ndarray, blocks: np.ndarray, n_boot: i
     return block_bootstrap(a, b[None], blocks, margin=0.0, n_boot=n_boot, seed=seed)
 
 
+def against_each(ours: np.ndarray, baselines: np.ndarray, blocks: np.ndarray, margin: float = 0.01,
+                 n_boot: int = 10_000, seed: int = 0):
+    """H1 as revised (manuscript §2.9): intersection-union test against EVERY model in B.
+
+    Success only if the H1 rule (mean Delta >= margin and 97.5 % one-sided bound > 0) holds against each
+    baseline separately. Level alpha without multiplicity correction. Replaces the per-block maximum, whose
+    upward bias (max of noisy block means) made the original rule unpassable (results/pilot/power_h1_max3.tsv).
+    Returns (success, [TestResult per baseline]); the same block resamples are used for every baseline.
+    """
+    res = [block_bootstrap(ours, baselines[m][None], blocks, margin=margin, n_boot=n_boot, seed=seed)
+           for m in range(len(baselines))]
+    return all(r.success for r in res), res
+
+
 def holm(pvalues, alpha: float = ALPHA):
     """Holm step-down: returns a boolean 'reject' per p-value."""
     p = np.asarray(pvalues, float)
