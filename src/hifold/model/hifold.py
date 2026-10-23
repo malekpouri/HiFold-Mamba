@@ -17,6 +17,7 @@ from torch import nn
 from torch.utils.checkpoint import checkpoint
 
 from hifold.model.rc import RCLayerNorm, RCMaxPool, RCAvgPool, RCPS, rc_conv, rc_linear, tie
+from hifold.model.mixers import AttentionMixer, DilatedConvMixer
 from hifold.model.ssm import BiMamba
 
 
@@ -42,6 +43,12 @@ class HiFoldConfig:
     # Without it the model cannot express cell-specific distance profiles (notes/2026-10-21_phase3-5.md).
     cell_dist_bias: bool = False
     checkpoint: bool = True
+    # Sequence mixer inside each block: "mamba" (HiFold) or the matched baselines "attention" / "conv".
+    mixer: str = "mamba"
+    attn_heads: int = 8
+    attn_dim: int = 0             # 0 = sized to match BiMamba's parameters (see mixer_kwargs)
+    conv_width: int = 0
+    conv_layers: int = 4
     scan_chunk: int = 16          # with the compiled scan: 1.34 s/step, 3.8 GiB (notes/2026-10-23_g1-profiling-reference.md)
 
     @property
@@ -71,6 +78,17 @@ class FFN(nn.Module):
         return self.down(self.drop(nn.functional.gelu(self.up(x))))
 
 
+def make_mixer(cfg: HiFoldConfig, width: int) -> nn.Module:
+    if cfg.mixer == "mamba":
+        return BiMamba(width, d_state=cfg.d_state, expand=cfg.expand, chunk=cfg.scan_chunk)
+    if cfg.mixer == "attention":
+        return AttentionMixer(width, n_bins=cfg.n_bins, heads=cfg.attn_heads,
+                              d_attn=cfg.attn_dim or None, dropout=cfg.dropout)
+    if cfg.mixer == "conv":
+        return DilatedConvMixer(width, width=cfg.conv_width or None, layers=cfg.conv_layers)
+    raise ValueError(f"unknown mixer {cfg.mixer}")
+
+
 class MambaBlock(nn.Module):
     """Pre-norm residual block: x += RCPS(BiMamba)(norm x) * FiLM ; x += FFN(norm x)."""
 
@@ -79,8 +97,7 @@ class MambaBlock(nn.Module):
         half = cfg.d_model // 2
         self.norm1 = RCLayerNorm(cfg.d_model)
         # RCPS inner maps 2D -> D; BiMamba works at width D, so project in first
-        self.mixer = RCPS(nn.Sequential(nn.Linear(cfg.d_model, half, bias=False),
-                                        BiMamba(half, d_state=cfg.d_state, expand=cfg.expand, chunk=cfg.scan_chunk)))
+        self.mixer = RCPS(nn.Sequential(nn.Linear(cfg.d_model, half, bias=False), make_mixer(cfg, half)))
         self.film = nn.Linear(cfg.cell_dim, cfg.d_model)   # -> (gamma_half, beta_half)
         nn.init.zeros_(self.film.weight)
         nn.init.zeros_(self.film.bias)
