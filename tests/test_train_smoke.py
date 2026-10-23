@@ -69,3 +69,20 @@ def test_training_loop_runs_and_learns(tmp_path):
     _, _, recs_shared = _run(tmp_path, cell_dist_bias=False)
     final_shared = np.mean([r["contact"] for r in recs_shared if "contact" in r][-3:])
     assert final_cell < 0.7 * final_shared
+
+
+@pytest.mark.filterwarnings("ignore::RuntimeWarning")
+def test_evaluate_checkpoint_and_global_mean(tmp_path):
+    import importlib.util
+    import pandas as pd
+    spec = importlib.util.spec_from_file_location("ev", "scripts/evaluate.py")
+    ev = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(ev)
+    _fake_cache(tmp_path / "cache")
+    run, _, _ = _run(tmp_path, cell_dist_bias=True, steps=10)
+    ev.checkpoint(str(run / "best.pt"), "valid", str(tmp_path / "eval.tsv"))
+    df = pd.read_csv(tmp_path / "eval.tsv", sep="\t")
+    assert len(df) == 4 * 2 and set(df["line"]) == {"A", "B"} and df["scc_hicrep"].notna().all()
+    ev.global_mean(str(tmp_path / "cache"), "valid", str(tmp_path / "gm.tsv"))
+    gm = pd.read_csv(tmp_path / "gm.tsv", sep="\t")
+    assert len(gm) == 8 and (gm["model"] == "global_mean").all()
