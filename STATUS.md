@@ -14,7 +14,7 @@ Last update: 2026-10-23. Details in `notes/` (latest: `2026-10-23_g1-profiling-r
 | 6 Structure losses | Insulation loss done. Boundary-loss form still open (architecture §6). Loop loss needs the G8 data |
 | 7 Runs | Next: Akita reproduction (`configs/akita_repro.yaml`, ~5 h locally) as soon as the cache is ready |
 
-Tests: **53/53 pass** (`CUDA_VISIBLE_DEVICES="" .venv/bin/python -m pytest -q tests`).
+Tests: **52/52 pass** (`CUDA_VISIBLE_DEVICES="" .venv/bin/python -m pytest -q tests`).
 
 ## Decisions waiting for the user
 
