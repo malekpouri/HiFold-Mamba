@@ -52,3 +52,21 @@ Why: the DNALongBench `targets/` folder ships TFRecords without coordinates. The
 ## 3. Reference genome
 
 Not needed for v1: sequences are embedded in the TFRecords. A UCSC hg38 FASTA exists at `datasets/reference_hg38/` (shared manifest, Part B) for later variant (H4) work.
+
+## 4. G8 independent loop and boundary sets
+
+Approved 2026-10-23 (`notes/2026-10-23_g8-resolved.md`). Downloaded with `scripts/download_g8.py OUT_DIR`, MD5-checked against portal metadata. Local: `datasets/g8/{loops,boundaries}/`, index in `datasets/g8/files.tsv`.
+
+**Loops: ENCODE CTCF ChIA-PET, GRCh38 `loops` (preferred default), downloaded 2026-10-23.** Format: bedpe, 7 columns (anchor 1, anchor 2, PET count). These are ChIA-PIPE PET clusters with ≥ 3 PETs, all intra-chromosomal, **not** significance-filtered loop calls. A positive set needs a PET threshold, fixed before evaluation (open).
+
+| Line | Experiment | File | Lab | Rows | Bytes | MD5 |
+|---|---|---|---|---|---|---|
+| H1hESC | ENCSR095SXC | ENCFF401IWZ | Charles Lee, JAX | 2,111,961 | 33,072,294 | 98354c097ec1bf32fac206656c620205 |
+| GM12878 | ENCSR184YZV | ENCFF780PGS | Yijun Ruan, JAX | 1,181,427 | 18,513,400 | ad835b1606f745eb5ee3bfd3f2327bcf |
+| IMR90 | ENCSR076TTY | ENCFF682YFU | Yijun Ruan, JAX | 471,557 | 7,780,283 | be6ce1cd0808fd811bada14306eb4cf8 |
+| HCT116 | ENCSR278IZK | ENCFF431BUN | Charles Lee, JAX | 276,384 | 4,171,667 | 89e034b1f5ca2e20fb7f1a19b783bc5f |
+| HFF | — | — | — | no CTCF ChIA-PET with processed loops on ENCODE or 4DN | | |
+
+Licence: ENCODE data, no restrictions on use (ENCODE data-use policy).
+
+**Boundaries: 4DN processed `boundaries` files (GRCh38). Not yet downloaded:** 4DN serves downloads only with an access key (HTTP 403 anonymously). Chosen files: HFF 4DNFI3CGVRKU (set 4DNESNMAAN97), H1hESC 4DNFICEHILOK (4DNESFSCP5L8), GM12878 4DNFIQBWXNL1 (4DNESLLTENG9), IMR90 4DNFIUI2RM2Q (4DNES4296C5Q), HCT116 4DNFIG49IPR6 (4DNESNSTBMBY).
