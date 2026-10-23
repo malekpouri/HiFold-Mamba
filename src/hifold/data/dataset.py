@@ -64,6 +64,9 @@ class ContactCache(Dataset):
         ok = codes < 4
         onehot[np.nonzero(ok)[0], codes[ok]] = 1.0
         target = np.asarray(self.tgt[i][:, self.cols], dtype=np.float32)
+        # An all-zero map is Akita's placeholder for a region missing from the cooler (27 K562 training
+        # maps): mark it missing so every loss and metric skips it (manuscript §2.9, exclusions).
+        target[:, (target == 0).all(axis=0)] = np.nan
         if self.rc_perm is not None and self.rng.random() < 0.5:
             onehot = np.ascontiguousarray(onehot[::-1, ::-1])           # reverse-complement (ACGT order)
             target = np.ascontiguousarray(target[self.rc_perm])        # rot180 of the map

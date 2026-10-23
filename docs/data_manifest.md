@@ -31,6 +31,15 @@ Record format (from the DNALongBench loader and Akita): ZLIB-compressed TFRecord
 - **Akita five** (`targets.txt` from Akita's own bucket, below): coolers HFF `4DNFIP5EUOFX` and H1hESC `4DNFI1O6IL1Q` (Krietenstein 2019/2020 Micro-C, MAPQ 30), GM12878 and IMR90 in-situ MboI (Rao 2014), HCT116 unsynchronized (Rao 2017); 2,048 bp; `clip 384`, `sum_stat sum`. Smoothing per the Akita paper: 2D Gaussian σ = 1.
 - **DNALongBench four** (`extra_data.complete/targets.txt`, `options.json`): coolers HAP1 `4DNFIWGGYEW2`, HeLa `4DNFI65WJKMT`, HepG2 `4DNFIQ4G74OW`, K562 `4DNFI2R1W3YW` (4DN); `as_obsexp: true`, `no_log: false`, `clip 2`, **`kernel_stddev: 0` (no Gaussian smoothing)**, `diagonal_offset: 2`, `crop_bp: 65536`, `stride_train: 262144`, `stride_test: 32768`, split `.1/.1`, seed 44, gaps file `hg38_gaps_binsize2048_numconseq10.bed`.
 
+### Caches (`datasets/dnalongbench/cache/`, built by `scripts/build_cache.py`)
+
+| Cache | Split sizes | hg38 sample check | All-zero (missing) maps |
+|---|---|---|---|
+| `akita5` (HFF, H1hESC, GM12878, IMR90, HCT116) | 7,008 / 419 / 413 | match (74 / 6 / test sample) | none |
+| `h3` (HAP1, HeLa, HepG2, K562), built 2026-10-23, ≈ 35 GB | 7,009 / 6,342 / 6,291 | match (74 / 67 / 66 records) | **K562 train: 27**; none elsewhere. Treated as missing (NaN) by `ContactCache` |
+
+`extra_data.complete` download finished 2026-10-23 (160 / 160 files, MD5-verified).
+
 ### Split check (`scripts/check_h3_overlap.py`, 2026-10-21)
 
 Both parts use the same 354 contigs (`contigs.bed`). Results:

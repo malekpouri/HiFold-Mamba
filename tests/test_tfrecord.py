@@ -72,3 +72,20 @@ def test_corruption_detected(tmp_path):
     path.write_bytes(bytes(raw))
     with pytest.raises(ValueError, match="CRC"):
         list(T.iter_records(path))
+
+
+def test_all_zero_map_is_marked_missing(tmp_path):
+    import json
+    import numpy as np
+    from hifold.data.dataset import ContactCache
+    d = tmp_path / "train"; d.mkdir()
+    np.save(d / "seq.u8.npy", np.zeros((2, 64), np.uint8))
+    t = np.random.default_rng(0).normal(size=(2, 10, 2)).astype(np.float16)
+    t[1, :, 1] = 0
+    np.save(d / "target.f16.npy", t)
+    (d / "windows.tsv").write_text("chr1\t0\t64\nchr1\t64\t128\n")
+    (d / "meta.json").write_text(json.dumps({"lines": ["A", "B"]}))
+    ds = ContactCache(tmp_path, "train")
+    assert not np.isnan(ds[0][1].numpy()).any()
+    y = ds[1][1].numpy()
+    assert np.isnan(y[:, 1]).all() and not np.isnan(y[:, 0]).any()

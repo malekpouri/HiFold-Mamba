@@ -190,7 +190,7 @@ A per-window Wilcoxon signed-rank test is reported as a secondary, anti-conserva
 - **Akita reproduction.** Our reproduced Akita reaches the criterion of Section 2.4. If it does not, we report this and keep it in $\mathcal{B}$, so a weak reproduction cannot make H1 easier, because H1 must beat every baseline.
 - **Sanity floor.** Every trained model must beat the global cell-line mean (one-sided block bootstrap). A model that fails is reported as a failed run and diagnosed (data, target, split) before any hypothesis test that uses it.
 
-**Exclusions.** Windows and lines with an undefined SCC (no scorable stratum) are excluded from that model's mean and listed. None exist in the pilot references. Bins without a defined boundary score, and loop pairs outside every test window, are not items. No other exclusion is permitted.
+**Exclusions.** Windows and lines with an undefined SCC (no scorable stratum) are excluded from that model's mean and listed. None exist in the pilot references. **Missing maps:** a target map that is exactly zero everywhere is Akita's placeholder for a region absent from the source cooler. It is treated as missing (NaN) in every loss and metric. Only 27 of 7,009 K562 training maps are affected (held-out lines; none in any validation or test split, and none for the five training lines). Bins without a defined boundary score, and loop pairs outside every test window, are not items. No other exclusion is permitted.
 
 **Block-size sensitivity:** every confirmatory test is repeated with 3 Mb blocks. Windows straddle 1 Mb block borders, so residual dependence may make 1 Mb intervals slightly narrow. Disagreements are reported but do not change the decision.
 
@@ -290,6 +290,7 @@ All pilot numbers come from logged scripts in the repository. None involves a tr
 
 * **Target transform (G1).** Confirmed against Akita's processing code and the files, as described in Section 2.2. Shipped values lie in [−2, 2]; no NaN; zero all-zero maps among 7,008 / 419 / 413 windows in any of the five lines.
 * **Coordinates.** For sampled records in every split (74 train, 6 validation, plus the test set), the stored one-hot sequence matches hg38 at the window's coordinates with > 99 % identity. Record order equals window order.
+* **Held-out lines.** Cached 7,009 / 6,342 / 6,291 windows, with sampled records matching hg38 in every split. 27 all-zero (missing) K562 training maps are handled as described in Section 2.9.
 * **Split hygiene.** Zero overlap between the held-out lines' validation and test windows and Akita's training windows, and zero overlap in the reverse direction (`scripts/check_h3_overlap.py`).
 * **Residual distance profiles.** Each line has its own residual P(s) after O/E normalization, with troughs of −0.17 to −0.30. This motivated the per-cell distance bias, which a synthetic-data training test confirms is needed to fit line-specific profiles (`tests/test_train_smoke.py`).
 
