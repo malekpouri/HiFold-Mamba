@@ -1,0 +1,27 @@
+# Akita reproduction on the official DNALongBench split (protocol §4; Roadmap step 1).
+# Architecture and optimiser from calico/basenji manuscripts/akita/params.json; our EMA and
+# checkpoint selection, as for every retrained baseline (manuscript §4.4).
+name: akita_repro
+model_type: akita
+seed: 0
+model: {}
+data:
+  root: /mnt/storage/datasets/Human genomes Dataset/new_idea/datasets/dnalongbench/cache/akita5
+  lines: [HFF, H1hESC, GM12878, IMR90, HCT116]
+  cell_ids: [0, 1, 2, 3, 4]
+  max_shift: 11
+  augment_rc: true
+  workers: 4
+batch_size: 2
+grad_accum: 1
+optimizer: sgd
+lr: 0.0065
+momentum: 0.99575
+clip: 10.0
+schedule: constant
+warmup: 0
+steps: 70080          # 20 epochs x 3504 steps; Akita used early stopping with patience 12
+ema_decay: 0.999
+eval_every: 3504      # once per epoch
+log_every: 100
+select_metric: scc_hicrep

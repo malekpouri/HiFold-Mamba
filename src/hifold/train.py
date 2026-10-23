@@ -23,6 +23,7 @@ from torch.utils.data import DataLoader
 
 from hifold.data.dataset import ContactCache
 from hifold.eval import metrics as M
+from hifold.model.akita import Akita, AkitaConfig
 from hifold.model.hifold import HiFold, HiFoldConfig
 from hifold.structure import insulation
 
@@ -74,9 +75,11 @@ def config_hash(cfg):
     return hashlib.sha1(json.dumps(keep, sort_keys=True).encode()).hexdigest()[:10]
 
 
-def lr_at(step, total, warmup, base):
+def lr_at(step, total, warmup, base, schedule="cosine"):
     if step < warmup:
         return base * (step + 1) / warmup
+    if schedule == "constant":
+        return base
     p = (step - warmup) / max(1, total - warmup)
     return base * 0.5 * (1 + math.cos(math.pi * min(p, 1.0)))
 
@@ -126,7 +129,8 @@ def train(cfg: dict):
     torch.manual_seed(cfg["seed"])
     np.random.seed(cfg["seed"])
     device = torch.device(cfg.get("device", "cuda" if torch.cuda.is_available() else "cpu"))
-    mcfg = HiFoldConfig(**cfg["model"])
+    model_type = cfg.get("model_type", "hifold")
+    mcfg = (AkitaConfig if model_type == "akita" else HiFoldConfig)(**cfg["model"])
     run = Path(cfg.get("run_root", "runs")) / f"{cfg['name']}-{config_hash(cfg)}-s{cfg['seed']}"
     run.mkdir(parents=True, exist_ok=True)
     (run / "config.yaml").write_text(yaml.safe_dump(cfg))
@@ -137,16 +141,19 @@ def train(cfg: dict):
 
     d = cfg["data"]
     train_ds = ContactCache(d["root"], "train", d.get("lines"), d.get("cell_ids"), d.get("max_shift", 11),
-                            subset=d.get("train_subset"), seed=cfg["seed"])
+                            subset=d.get("train_subset"), seed=cfg["seed"], augment_rc=d.get("augment_rc", False))
     valid_ds = ContactCache(d["root"], "valid", d.get("lines"), d.get("cell_ids"), 0)
     tl = DataLoader(train_ds, batch_size=cfg["batch_size"], shuffle=True, num_workers=d.get("workers", 2),
                     drop_last=True, generator=torch.Generator().manual_seed(cfg["seed"]))
     vl = DataLoader(valid_ds, batch_size=cfg["batch_size"], shuffle=False, num_workers=d.get("workers", 2))
 
-    model = HiFold(mcfg).to(device)
+    model = (Akita if model_type == "akita" else HiFold)(mcfg).to(device)
     if cfg.get("init_from"):
         model.load_state_dict(torch.load(cfg["init_from"], map_location=device)["model"], strict=False)
-    opt = torch.optim.AdamW(model.parameters(), lr=cfg["lr"], weight_decay=cfg.get("weight_decay", 1e-2))
+    if cfg.get("optimizer", "adamw") == "sgd":     # Akita's published optimiser
+        opt = torch.optim.SGD(model.parameters(), lr=cfg["lr"], momentum=cfg.get("momentum", 0.9))
+    else:
+        opt = torch.optim.AdamW(model.parameters(), lr=cfg["lr"], weight_decay=cfg.get("weight_decay", 1e-2))
     ema = EMA(model, cfg.get("ema_decay", 0.999))
     accum = cfg.get("grad_accum", 1)
     total = cfg["steps"]
@@ -176,7 +183,8 @@ def train(cfg: dict):
             if (step + 1) % accum == 0:
                 torch.nn.utils.clip_grad_norm_(model.parameters(), cfg.get("clip", 1.0))
                 for gp in opt.param_groups:
-                    gp["lr"] = lr_at(step // accum, total // accum, cfg.get("warmup", 1000) // accum, cfg["lr"])
+                    gp["lr"] = lr_at(step // accum, total // accum, cfg.get("warmup", 1000) // accum, cfg["lr"],
+                                     cfg.get("schedule", "cosine"))
                 opt.step()
                 opt.zero_grad(set_to_none=True)
                 ema.update(model)

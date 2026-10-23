@@ -8,6 +8,18 @@ import torch
 from torch.utils.data import Dataset
 
 
+def rot180_triu_perm(n: int = 448, offset: int = 2) -> np.ndarray:
+    """Index permutation p with vec_rc = vec[p]: upper-triangle vector of rot180(M) from that of M.
+
+    rot180(M)[i, j] = M[n-1-i, n-1-j]; for symmetric M this equals M[n-1-j, n-1-i], which lies in the
+    upper triangle with the same offset.
+    """
+    iu = np.triu_indices(n, k=offset)
+    pos = -np.ones((n, n), dtype=np.int64)
+    pos[iu] = np.arange(len(iu[0]))
+    return pos[n - 1 - iu[1], n - 1 - iu[0]]
+
+
 class ContactCache(Dataset):
     """Yields (onehot (L, 4) float32, target (99681, K) float32, cells (K,) long, index).
 
@@ -17,7 +29,7 @@ class ContactCache(Dataset):
     subset:    optional array of record indices (e.g. H3 limited-data regimes)
     """
 
-    def __init__(self, root, split, lines=None, cell_ids=None, max_shift=0, subset=None, seed=0):
+    def __init__(self, root, split, lines=None, cell_ids=None, max_shift=0, subset=None, seed=0, augment_rc=False):
         d = Path(root) / split
         self.meta = json.loads((d / "meta.json").read_text())
         self.seq = np.load(d / "seq.u8.npy", mmap_mode="r")
@@ -30,6 +42,8 @@ class ContactCache(Dataset):
         self.index = np.arange(len(self.seq)) if subset is None else np.asarray(subset)
         self.max_shift = max_shift
         self.rng = np.random.default_rng(seed)
+        # RC augmentation for non-equivariant baselines (Akita): sequence and map transformed together
+        self.rc_perm = rot180_triu_perm() if augment_rc else None
 
     def __len__(self):
         return len(self.index)
@@ -50,6 +64,9 @@ class ContactCache(Dataset):
         ok = codes < 4
         onehot[np.nonzero(ok)[0], codes[ok]] = 1.0
         target = np.asarray(self.tgt[i][:, self.cols], dtype=np.float32)
+        if self.rc_perm is not None and self.rng.random() < 0.5:
+            onehot = np.ascontiguousarray(onehot[::-1, ::-1])           # reverse-complement (ACGT order)
+            target = np.ascontiguousarray(target[self.rc_perm])        # rot180 of the map
         return torch.from_numpy(onehot), torch.from_numpy(target), self.cells.clone(), i
 
     def window(self, i):

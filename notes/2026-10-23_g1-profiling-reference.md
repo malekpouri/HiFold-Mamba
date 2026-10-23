@@ -62,3 +62,25 @@ Observations (not claims):
 
 - SCC is vectorised over diagonals; results are identical to the loop on real data (max diff 0 at 6 decimals).
 - Full test-set reference: 10.5 min → 1.5 min.
+
+## Akita port and scan compilation (later the same day)
+
+**Akita in PyTorch** (`src/hifold/model/akita.py`), faithful to `manuscripts/akita/params.json` and basenji `blocks.py`/`layers.py`:
+- 746,149 parameters;
+- dilation rates [1, 2, 3, 5, 9, 16, 29, 50] (1D trunk) and [1, 2, 3, 5, 9, 16] (2D head);
+- symmetric output; cell selection tested.
+- Uses RC augmentation (sequence and map together; the `rot180_triu_perm` permutation is tested).
+- Profile: batch 2 without checkpointing takes 4.73 GiB and 0.25 s/step. Checkpointing is off, so BatchNorm statistics are not updated twice.
+
+**Where HiFold's time went:** at 3.16 s/step, the tower took 0.37 s and the 32 Mamba direction calls about 2 s.
+- Batching the paired paths (BiMamba directions, RCPS x/RC(x)) gave **no** gain: the scan is memory-bandwidth-bound. Reverted.
+- `torch.compile` on the scan: 60 → 26 ms per call, peak 1380 → 620 MiB, max deviation 1.1e-5 at scale 28 (fp32 rounding). Used on CUDA only; CPU tests stay eager.
+
+| config, 1 window x 5 lines | s/step | peak | 1 pass over 7,008 windows |
+|---|---|---|---|
+| HiFold paper, chunk 16 (new default) | 1.34 | 3.84 GiB | 2.6 h |
+| HiFold paper, chunk 8 | 1.64 | 2.62 GiB | 3.2 h |
+| HiFold fallback | 0.52 | 1.37 GiB | 1.0 h |
+| Akita | 0.12 per window | 4.73 GiB at batch 2 | 0.25 h |
+
+HiFold remains about 11x slower per window than Akita. This is a cost, not a result, and it is consistent with the protocol's rule of no efficiency claim at 512 bins.
