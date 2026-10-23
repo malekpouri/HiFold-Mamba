@@ -9,8 +9,29 @@ RCPS (Caduceus-PS style parameter sharing): for any F: (B, L, C_in) -> (B, L, D)
 is exactly equivariant, whatever F is.
 """
 
+import contextlib
+import copy
+
 import torch
 from torch import nn
+
+# Ablation "- RC equivariance" (architecture §5): layers built inside `untied_rc()` keep their shapes and
+# FLOPs but give the second (reverse) half its own parameters, so the network is no longer equivariant.
+_UNTIED = False
+
+
+@contextlib.contextmanager
+def untied_rc(enabled: bool = True):
+    global _UNTIED
+    prev, _UNTIED = _UNTIED, enabled
+    try:
+        yield
+    finally:
+        _UNTIED = prev
+
+
+def is_untied() -> bool:
+    return _UNTIED
 
 
 def rc(h: torch.Tensor) -> torch.Tensor:
@@ -22,9 +43,17 @@ class RCPS(nn.Module):
     def __init__(self, inner: nn.Module):
         super().__init__()
         self.inner = inner
+        self.inner2 = None
+        if _UNTIED:   # independent copy for the second half; re-initialised so the halves differ
+            self.inner2 = copy.deepcopy(inner)
+            for m in self.inner2.modules():
+                if hasattr(m, "reset_parameters"):
+                    m.reset_parameters()
 
     def forward(self, x, *args, **kwargs):
         fwd = self.inner(x, *args, **kwargs)
+        if self.inner2 is not None:
+            return torch.cat([fwd, self.inner2(x, *args, **kwargs)], dim=-1)
         rev = rc(self.inner(rc(x), *args, **kwargs))
         return torch.cat([fwd, rev], dim=-1)
 
@@ -58,11 +87,14 @@ class RCLayerNorm(nn.Module):
         super().__init__()
         assert c % 2 == 0
         self.eps = eps
-        self.g = nn.Parameter(torch.ones(c // 2))
-        self.b = nn.Parameter(torch.zeros(c // 2))
+        self.untied = _UNTIED
+        self.g = nn.Parameter(torch.ones(c if self.untied else c // 2))
+        self.b = nn.Parameter(torch.zeros(c if self.untied else c // 2))
 
     def forward(self, x):
         x = nn.functional.layer_norm(x, x.shape[-1:], eps=self.eps)
+        if self.untied:
+            return x * self.g + self.b
         g = torch.cat([self.g, self.g.flip(0)])
         b = torch.cat([self.b, self.b.flip(0)])
         return x * g + b

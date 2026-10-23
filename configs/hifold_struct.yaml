@@ -1,0 +1,33 @@
+# HiFold-Mamba + structural loss (H2 arm). Identical to hifold_paper.yaml up to step 52,560 (75 %),
+# then L_contact + lam_ins L_ins + lam_bnd L_bnd for the remaining 17,520 steps: same total steps as Base.
+# lam values: chosen by the pre-registered validation rule (manuscript §2.7) from {0.1, 0.3, 1.0};
+# the values below are the pre-selection default and are overwritten (key=val) by the selected pair.
+name: hifold_struct
+model_type: hifold
+seed: 0
+model:
+  cell_dist_bias: true
+struct:
+  start_step: 52560
+  ins: 0.3
+  bnd: 0.3
+  w: 20
+  bnd_window: 5
+data:
+  root: /mnt/storage/datasets/Human genomes Dataset/new_idea/datasets/dnalongbench/cache/akita5
+  lines: [HFF, H1hESC, GM12878, IMR90, HCT116]
+  cell_ids: [0, 1, 2, 3, 4]
+  max_shift: 11
+  workers: 4
+batch_size: 1
+grad_accum: 8               # effective batch 8 windows x 5 lines
+optimizer: adamw
+lr: 0.0003
+weight_decay: 0.01
+schedule: cosine
+warmup: 1000
+steps: 70080                # 10 epochs at batch 1; ~26 h locally at 1.34 s/step
+ema_decay: 0.999
+eval_every: 7008
+log_every: 100
+select_metric: scc_hicrep

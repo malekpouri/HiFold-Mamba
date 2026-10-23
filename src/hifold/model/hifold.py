@@ -16,7 +16,7 @@ import torch
 from torch import nn
 from torch.utils.checkpoint import checkpoint
 
-from hifold.model.rc import RCLayerNorm, RCMaxPool, RCAvgPool, RCPS, rc_conv, rc_linear, tie
+from hifold.model.rc import RCLayerNorm, RCMaxPool, RCAvgPool, RCPS, is_untied, rc_conv, rc_linear, tie, untied_rc
 from hifold.model.mixers import AttentionMixer, DilatedConvMixer
 from hifold.model.ssm import BiMamba
 
@@ -43,6 +43,10 @@ class HiFoldConfig:
     # Without it the model cannot express cell-specific distance profiles (notes/2026-10-21_phase3-5.md).
     cell_dist_bias: bool = True
     checkpoint: bool = True
+    # Ablations (architecture §5). rc_equivariant=False: same shapes and FLOPs, untied RC halves (train with
+    # augment_rc). multiscale=False: the head sees only the deepest state at full resolution.
+    rc_equivariant: bool = True
+    multiscale: bool = True
     # Sequence mixer inside each block: "mamba" (HiFold) or the matched baselines "attention" / "conv".
     mixer: str = "mamba"
     attn_heads: int = 8
@@ -98,7 +102,9 @@ class MambaBlock(nn.Module):
         self.norm1 = RCLayerNorm(cfg.d_model)
         # RCPS inner maps 2D -> D; BiMamba works at width D, so project in first
         self.mixer = RCPS(nn.Sequential(nn.Linear(cfg.d_model, half, bias=False), make_mixer(cfg, half)))
-        self.film = nn.Linear(cfg.cell_dim, cfg.d_model)   # -> (gamma_half, beta_half)
+        self.untied = is_untied()
+        # -> (gamma_half, beta_half); untied ablation: full-width gamma, beta
+        self.film = nn.Linear(cfg.cell_dim, 2 * cfg.d_model if self.untied else cfg.d_model)
         nn.init.zeros_(self.film.weight)
         nn.init.zeros_(self.film.bias)
         self.norm2 = RCLayerNorm(cfg.d_model)
@@ -108,8 +114,10 @@ class MambaBlock(nn.Module):
     def forward(self, x, cell_emb):
         gb = self.film(cell_emb)                            # (B, D) -> gamma, beta halves
         gamma, beta = gb.chunk(2, dim=-1)
-        gamma = 1.0 + tie(gamma)[:, None, :]                # RC-symmetric per-channel scale
-        beta = tie(beta)[:, None, :]
+        if not self.untied:
+            gamma, beta = tie(gamma), tie(beta)             # RC-symmetric per-channel scale
+        gamma = 1.0 + gamma[:, None, :]
+        beta = beta[:, None, :]
         x = x + self.drop(gamma * self.mixer(self.norm1(x)) + beta)
         return x + self.drop(self.ffn(self.norm2(x)))
 
@@ -119,8 +127,10 @@ class MultiScaleMixer(nn.Module):
 
     def __init__(self, cfg: HiFoldConfig, n_sources=3):
         super().__init__()
-        self.pyramid = cfg.pyramid
-        self.proj = nn.ModuleList(rc_linear(cfg.d_model, cfg.d_model) for _ in range(n_sources * len(cfg.pyramid)))
+        if not cfg.multiscale:
+            n_sources = 1
+        self.pyramid = cfg.pyramid if cfg.multiscale else (1,)
+        self.proj = nn.ModuleList(rc_linear(cfg.d_model, cfg.d_model) for _ in range(n_sources * len(self.pyramid)))
         self.norm = RCLayerNorm(cfg.d_model)
 
     def forward(self, states):
@@ -145,6 +155,10 @@ class PairHead(nn.Module):
         super().__init__()
         self.P = nn.Linear(cfg.d_model, cfg.d_pair, bias=False)
         self.Q = nn.Linear(cfg.d_model, cfg.d_pair, bias=False)
+        self.untied = is_untied()
+        if self.untied:   # second half from its own projections instead of the channel-flipped z
+            self.P2 = nn.Linear(cfg.d_model, cfg.d_pair, bias=False)
+            self.Q2 = nn.Linear(cfg.d_model, cfg.d_pair, bias=False)
         self.per_cell = cfg.cell_dist_bias
         self.dist_bias = nn.Parameter(torch.zeros(cfg.n_cells if self.per_cell else 1, cfg.n_bins))
         self.scale = (2 * cfg.d_pair) ** -0.5
@@ -153,9 +167,13 @@ class PairHead(nn.Module):
         self.register_buffer("dist", (idx[:, None] - idx[None, :]).abs(), persistent=False)
 
     def forward(self, z, cells=None):
-        zj = z.flip(-1)
-        u = torch.cat([self.P(z), self.P(zj)], -1)
-        v = torch.cat([self.Q(z), self.Q(zj)], -1)
+        if self.untied:
+            u = torch.cat([self.P(z), self.P2(z)], -1)
+            v = torch.cat([self.Q(z), self.Q2(z)], -1)
+        else:
+            zj = z.flip(-1)
+            u = torch.cat([self.P(z), self.P(zj)], -1)
+            v = torch.cat([self.Q(z), self.Q(zj)], -1)
         rows = cells if self.per_cell else torch.zeros(z.shape[0], dtype=torch.long, device=z.device)
         bias = self.dist_bias[rows][:, self.dist]                          # (B, n, n)
         m = torch.einsum("bid,bjd->bij", u, v) * self.scale + bias
@@ -168,6 +186,10 @@ class HiFold(nn.Module):
     def __init__(self, cfg: HiFoldConfig = HiFoldConfig()):
         super().__init__()
         self.cfg = cfg
+        with untied_rc(not cfg.rc_equivariant):
+            self._build(cfg)
+
+    def _build(self, cfg):
         n_pool = len(cfg.tower_channels)
         assert cfg.seq_len // 2**n_pool == cfg.n_bins, "tower must downsample seq_len to n_bins"
         chans = cfg.tower_channels
@@ -197,7 +219,7 @@ class HiFold(nn.Module):
         e = self.cell_emb(cells)
         states = []
         n = len(self.blocks)
-        marks = {n // 3 - 1, 2 * n // 3 - 1, n - 1}
+        marks = {n // 3 - 1, 2 * n // 3 - 1, n - 1} if self.cfg.multiscale else {n - 1}
         for k, blk in enumerate(self.blocks):
             h = self._ckpt(blk, h, e)
             if k in marks:

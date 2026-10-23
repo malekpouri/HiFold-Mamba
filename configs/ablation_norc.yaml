@@ -1,0 +1,27 @@
+# Ablation "- RC equivariance": same shapes and FLOPs, untied reverse halves (6.64 M parameters, 2x the
+# full model, which favours the ablation); RC symmetry supplied by data augmentation instead.
+name: ablation_norc
+model_type: hifold
+seed: 0
+model:
+  cell_dist_bias: true
+  rc_equivariant: false
+data:
+  root: /mnt/storage/datasets/Human genomes Dataset/new_idea/datasets/dnalongbench/cache/akita5
+  lines: [HFF, H1hESC, GM12878, IMR90, HCT116]
+  cell_ids: [0, 1, 2, 3, 4]
+  max_shift: 11
+  augment_rc: true
+  workers: 4
+batch_size: 1
+grad_accum: 8               # effective batch 8 windows x 5 lines
+optimizer: adamw
+lr: 0.0003
+weight_decay: 0.01
+schedule: cosine
+warmup: 1000
+steps: 70080                # 10 epochs at batch 1; ~26 h locally at 1.34 s/step
+ema_decay: 0.999
+eval_every: 7008
+log_every: 100
+select_metric: scc_hicrep
