@@ -46,3 +46,4 @@ Thumbs.db
 
 # local logs
 download_*.log
+runs_*.log

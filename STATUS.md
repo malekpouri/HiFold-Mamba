@@ -1,52 +1,37 @@
 # Status — resume here
 
-Last session: 2026-10-21. Details: `notes/2026-10-21_phase1-2.md`, `notes/2026-10-21_phase3-5.md`.
+Last update: 2026-10-23. Details in `notes/` (latest: `2026-10-23_g1-profiling-reference.md`, `2026-10-23_g8-candidates.md`).
 
 ## Where we are
 
 | Phase | State |
 |---|---|
-| 1 Environment | Done. uv venv, torch 2.14.1+cu130, RTX 5050 OK (bf16). Fused Mamba kernels not used (pure-PyTorch scan) |
-| 2 Data & target | Partly done. Format, alignment to hg38 and the H3 split are verified; H3-line targets inspected. **Download paused at ~1.2 / 26.5 GB** (Akita: 3 / 32 files) |
-| 3 Evaluation code | Done and tested (SCC ×2, PCC, block bootstrap, insulation, AUROC/AP) |
-| 4 Baselines | Not started (needs data) |
-| 5 Model | Done. **Equivariance test passes** |
-| 6 Structure losses | Insulation done; boundary/loop losses not yet |
-| 7 Dev runs | Not started (needs data + free GPU) |
+| 1 Environment | Done. torch 2.14.1+cu130, compiled pure-PyTorch scan. Paper model fits 8 GB: 1.34 s/step, 3.8 GiB |
+| 2 Data & target | **G1 closed** (natural-log O/E, clip ±2, smoothed after the clip). Test cache built and hg38-verified. Download of the 5 training lines running; train/valid cache builds automatically when it finishes. The 4 H3 lines download next |
+| 3 Evaluation code | Done. Vectorised SCC (both variants), PCC, block bootstrap, insulation, AUROC/AP, `scripts/evaluate.py` |
+| 4 Baselines | Akita ported (746k params). Matched Transformer and matched CNN (parameter-matched, RC-equivariant). Locus-shared reference computed on test; global mean ready |
+| 5 Model | Done. Equivariance test passes, including the negative control |
+| 6 Structure losses | Insulation loss done. Boundary-loss form still open (architecture §6). Loop loss needs the G8 data |
+| 7 Runs | Next: Akita reproduction (`configs/akita_repro.yaml`, ~5 h locally) as soon as the cache is ready |
 
-Tests: 41 pass, **1 fails** (`test_training_loop_runs_and_learns`, see notes).
-
-## Commands to resume
-
-```bash
-cd "/mnt/storage/datasets/Human genomes Dataset/new_idea/03-3DChromatin-Folding"
-
-# 1. Resume the download (skips MD5-verified files; ~150 KB/s here, i.e. ~2 days for everything)
-nohup python3 -I scripts/download_dnalongbench.py "/mnt/storage/datasets/Human genomes Dataset/new_idea/datasets/dnalongbench" contact_map_prediction/targets > download_targets.log 2>&1 &
-#    afterwards: same command with contact_map_prediction/extra_data.complete
-
-# 2. Tests (CPU)
-CUDA_VISIBLE_DEVICES="" .venv/bin/python -m pytest -q tests
-
-# 3. When targets/ is complete: build the cache (verifies records against hg38)
-D="/mnt/storage/datasets/Human genomes Dataset/new_idea/datasets"
-PYTHONPATH=src .venv/bin/python scripts/build_cache.py "$D/dnalongbench/contact_map_prediction/targets" \
-  "$D/dnalongbench/akita_1m_metadata/sequences.bed" HFF,H1hESC,GM12878,IMR90,HCT116 \
-  "$D/dnalongbench/cache/akita5" "$D/reference_hg38/hg38.fa"
-```
+Tests: **53/53 pass** (`CUDA_VISIBLE_DEVICES="" .venv/bin/python -m pytest -q tests`).
 
 ## Decisions waiting for the user
 
-1. **Primary SCC variant.** The benchmark's SCC weights strata ∝ 1/N (the opposite of HiCRep). Options: (a) benchmark SCC primary + HiCRep alongside, or (b) the reverse.
-2. **H3 lines are unsmoothed** (`kernel_stddev 0`). Recommended: keep the targets unchanged and report this as a limitation.
-3. **`cell_dist_bias`** (per-cell distance bias). Recommended: on.
-4. **Slow network** (~150 KB/s): try the Box mirror, or download on a faster connection and copy the files over.
+1. **Primary SCC variant.** Benchmark code vs HiCRep. On real data they correlate only at ρ = 0.54 across windows. Checkpoint selection already follows CLAUDE.md (HiCRep).
+2. **H3 lines unsmoothed.** Recommended: keep the targets unchanged and report this as a limitation.
+3. **`cell_dist_bias`.** Recommended: on. Real targets show a line-specific residual P(s) (trough −0.17 to −0.30).
+4. **G8 sources.** Approve the boundary/loop table in `notes/2026-10-23_g8-candidates.md`.
+5. **Strong CNN definition.** Implemented as HiFold with a dilated-conv mixer (parameter-matched). Confirm, or name a published model instead.
+6. **Boundary loss form** (architecture §6, "before coding").
 
-## Next steps (in order)
+## Commands
 
-1. Diagnose the failing smoke test.
-2. Write the boundary loss.
-3. Write the GPU memory profiler; needs the GPU free of the CRISPR job.
-4. Write the baselines: global mean and locus-shared mean.
-5. Build the cache once the download completes; inspect the Akita targets (G1 for the five lines).
-6. Run the reproduction of Akita.
+```bash
+cd "/mnt/storage/datasets/Human genomes Dataset/new_idea/03-3DChromatin-Folding"
+# resume the download if interrupted (MD5-verified files are skipped)
+R="/mnt/storage/datasets/Human genomes Dataset/new_idea/datasets/dnalongbench"
+nohup python3 -I scripts/download_dnalongbench.py "$R" contact_map_prediction/targets > download_targets.log 2>&1 &
+# Akita reproduction (after the cache exists)
+PYTHONPATH=src nohup .venv/bin/python -m hifold.train configs/akita_repro.yaml > runs_akita.log 2>&1 &
+```
