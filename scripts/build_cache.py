@@ -82,11 +82,14 @@ def build_split(tfr_dir, windows, names, out_dir, fasta, split, check_every=97):
         raise RuntimeError(f"{split}: {mismatches}/{n_checked} sampled records do not match hg38")
     seq_mm.flush()
     tgt_mm.flush()
+    # Akita's akita_data_read.py writes an all-zero target when a cooler lacks the region: flag these
+    zero_maps = {name: int(np.sum([not np.any(tgt_mm[r, :, k]) for r in range(n)])) for k, name in enumerate(names)}
+    print(f"{split}: all-zero target maps per line: {zero_maps}", flush=True)
     with open(out / "windows.tsv", "w") as fh:
         for chrom, start, end, _ in wins:
             fh.write(f"{chrom}\t{start}\t{end}\n")
     meta = {"split": split, "n": n, "lines": names, "seq_len": SEQ_LEN, "n_triu": N_TRIU,
-            "files": [p.name for p in files], "hg38_checked_records": n_checked}
+            "files": [p.name for p in files], "hg38_checked_records": n_checked, "all_zero_maps": zero_maps}
     (out / "meta.json").write_text(json.dumps(meta, indent=2))
     print(f"{split}: {n} records cached; {n_checked} sampled records match hg38", flush=True)
 

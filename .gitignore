@@ -43,3 +43,6 @@ Thumbs.db
 *.swp
 .idea/
 .vscode/
+
+# local logs
+download_*.log

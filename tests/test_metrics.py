@@ -71,7 +71,8 @@ def test_scc_benchmark_matches_reference():
     t = M.triu_to_matrix(M.matrix_to_triu(_random_map(rng)))
     p = M.triu_to_matrix(M.matrix_to_triu(_random_map(rng)))
     p = 0.6 * t + 0.4 * p
-    assert M.scc_benchmark(p, t) == pytest.approx(_scc_reference(p, t), abs=1e-12)
+    assert M.scc_benchmark(p, t) == pytest.approx(_scc_reference(p, t), abs=1e-10)
+    assert M._scc_benchmark_loop(p, t) == pytest.approx(_scc_reference(p, t), abs=1e-12)
 
 
 @pytest.mark.filterwarnings("ignore::RuntimeWarning")

@@ -37,25 +37,24 @@ def selective_scan(x, dt, A, B, C, D, chunk: int = 16):
     Bs = B.view(b, nc, chunk, N)
     Cs = C.view(b, nc, chunk, N)
     causal = torch.tril(torch.ones(chunk, chunk, dtype=torch.bool, device=x.device))
-    h = x.new_zeros(b, E, N)
-    ys = []
-    for c in range(nc):
-        dtc, xc, Bc, Cc = dts[:, c], xs[:, c], Bs[:, c], Cs[:, c]      # (b,T,E),(b,T,E),(b,T,N),(b,T,N)
-        logd = dtc[..., None] * A                                       # (b, T, E, N), <= 0
-        cs = logd.cumsum(1)                                             # cumulative log-decay
-        # intra-chunk: y_t += sum_{s<=t} C_t . exp(cs_t - cs_s) (dt_s B_s x_s)
-        seg = cs[:, :, None] - cs[:, None, :]                           # (b, t, s, E, N)
-        seg = seg.masked_fill(~causal[None, :, :, None, None], float("-inf"))
-        w = torch.exp(seg)                                              # 0 where s > t
-        u = dtc[..., None] * Bc[:, :, None, :] * xc[..., None]          # (b, s, E, N)
-        intra = torch.einsum("btsen,bsen,btn->bte", w, u, Cc)
-        # carry-in from previous chunks: C_t . exp(cs_t) h
-        inter = torch.einsum("bten,ben,btn->bte", torch.exp(cs), h, Cc)
-        ys.append(intra + inter)
-        # new carry: h = exp(cs_T) h + sum_s exp(cs_T - cs_s) u_s
-        last = cs[:, -1]                                                # (b, E, N)
-        h = torch.exp(last) * h + (torch.exp(last[:, None] - cs) * u).sum(1)
-    return torch.cat(ys, 1) + x * D
+    # All chunks at once (few large kernels instead of many small ones); only the carry is sequential.
+    logd = dts[..., None] * A                                           # (b, c, T, E, N), <= 0
+    cs = logd.cumsum(2)                                                 # cumulative log-decay per chunk
+    u = dts[..., None] * Bs[:, :, :, None, :] * xs[..., None]           # (b, c, s, E, N)
+    # intra-chunk: y_t += sum_{s<=t} C_t . exp(cs_t - cs_s) u_s
+    seg = cs[:, :, :, None] - cs[:, :, None, :]                         # (b, c, t, s, E, N)
+    seg = seg.masked_fill(~causal[None, None, :, :, None, None], float("-inf"))
+    intra = torch.einsum("bctsen,bcsen,bctn->bcte", torch.exp(seg), u, Cs)
+    # chunk summaries: state added within chunk c, and total decay across it
+    last = cs[:, :, -1]                                                 # (b, c, E, N)
+    added = (torch.exp(last[:, :, None] - cs) * u).sum(2)               # (b, c, E, N)
+    decay = torch.exp(last)
+    carries = [x.new_zeros(b, E, N)]                                    # state entering chunk c
+    for c in range(nc - 1):
+        carries.append(decay[:, c] * carries[-1] + added[:, c])
+    h = torch.stack(carries, 1)                                         # (b, c, E, N)
+    inter = torch.einsum("bcten,bcen,bctn->bcte", torch.exp(cs), h, Cs)
+    return (intra + inter).reshape(b, L, E) + x * D
 
 
 class Mamba(nn.Module):

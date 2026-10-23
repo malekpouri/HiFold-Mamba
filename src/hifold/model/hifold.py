@@ -42,7 +42,7 @@ class HiFoldConfig:
     # Without it the model cannot express cell-specific distance profiles (notes/2026-10-21_phase3-5.md).
     cell_dist_bias: bool = False
     checkpoint: bool = True
-    scan_chunk: int = 16
+    scan_chunk: int = 8           # 8 fits the paper config in 8 GB (notes/2026-10-23_profiling.md)
 
     @property
     def out_bins(self):

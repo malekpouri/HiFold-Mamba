@@ -46,8 +46,54 @@ def _vstrans_benchmark(nk):
     return np.var(np.arange(nk)) / nk**4
 
 
+def _diagonals(m: np.ndarray, d0: int, d1: int) -> np.ndarray:
+    """Stack diagonals d0..d1-1 of a square matrix into (D, n), NaN-padded on the right."""
+    n = m.shape[0]
+    i = np.arange(n)[None, :]
+    d = np.arange(d0, d1)[:, None]
+    j = i + d
+    ok = j < n
+    out = np.full((d1 - d0, n), np.nan)
+    out[ok] = m[np.broadcast_to(i, ok.shape)[ok], j[ok]]
+    return out
+
+
+def _rowwise_pearson(x: np.ndarray, y: np.ndarray):
+    """Pearson r per row over positions where both are finite. Returns (r, count, var_x, var_y)."""
+    mask = ~np.isnan(x) & ~np.isnan(y)
+    cnt = mask.sum(1)
+    with np.errstate(invalid="ignore", divide="ignore"):
+        xm = np.where(mask, x, 0.0).sum(1) / cnt
+        ym = np.where(mask, y, 0.0).sum(1) / cnt
+        dx = np.where(mask, x - xm[:, None], 0.0)
+        dy = np.where(mask, y - ym[:, None], 0.0)
+        vx, vy = (dx * dx).sum(1), (dy * dy).sum(1)
+        r = (dx * dy).sum(1) / np.sqrt(vx * vy)
+    return r, cnt, vx / np.maximum(cnt, 1), vy / np.maximum(cnt, 1), mask
+
+
 def scc_benchmark(mat1: np.ndarray, mat2: np.ndarray, max_bins: int = None) -> float:
-    """Port of DNALongBench scripts/metrics.py::scc (commit on main, read 2026-10-21)."""
+    """DNALongBench scripts/metrics.py::scc (read 2026-10-21), vectorised over diagonals.
+
+    Same semantics as the original loop (tests/test_metrics.py compares against a verbatim copy):
+    diagonals 0..max_bins-1 with max_bins = n - 5, diagonal 0 dropped, NaN correlation when a
+    stratum has zero variance, stratum weight N_k * var(0..N_k-1) / N_k**4.
+    """
+    assert mat1.shape == mat2.shape
+    n = mat1.shape[0]
+    max_bins = n - 5 if max_bins is None else min(max_bins, n - 5)
+    r, cnt, vx, vy, _ = _rowwise_pearson(_diagonals(mat1, 0, max_bins), _diagonals(mat2, 0, max_bins))
+    r = np.where((vx > 0) & (vy > 0), r, np.nan)
+    with np.errstate(invalid="ignore", divide="ignore"):
+        w = cnt * ((cnt.astype(float) ** 2 - 1) / 12) / cnt.astype(float) ** 4   # var(arange(N)) = (N^2-1)/12
+    r, w = r[1:], w[1:]
+    keep = ~np.isnan(r)
+    r, w = r[keep], w[keep]
+    return float(np.nansum(r * w / w.sum()))
+
+
+def _scc_benchmark_loop(mat1: np.ndarray, mat2: np.ndarray, max_bins: int = None) -> float:
+    """Original loop form of scc_benchmark (kept for cross-checking)."""
     assert mat1.shape == mat2.shape
     if max_bins is None:
         max_bins = int(mat1.shape[0] - 5)
@@ -96,26 +142,31 @@ def _mean_filter(mat: np.ndarray, h: int) -> np.ndarray:
 
 def scc_hicrep(mat1: np.ndarray, mat2: np.ndarray, max_bins: int = None,
                min_dist: int = DIAG_OFFSET, h: int = 0) -> float:
-    """Stratum-adjusted correlation coefficient (Yang et al. 2017) on strata d in [min_dist, max_bins)."""
+    """Stratum-adjusted correlation coefficient (Yang et al. 2017) on strata d in [min_dist, max_bins).
+
+    Weight per stratum: N_k * sqrt(var(r1/N_k) var(r2/N_k)), r = within-stratum ranks (ties averaged).
+    Strata with fewer than 2 pairs or a constant side are skipped. Vectorised over diagonals.
+    """
     assert mat1.shape == mat2.shape
     n = mat1.shape[0]
     max_bins = n if max_bins is None else min(max_bins, n)
-    m1, m2 = _mean_filter(mat1, h), _mean_filter(mat2, h)
-    corrs, weights = [], []
-    for d in range(min_dist, max_bins):
-        d1, d2 = m1.diagonal(d), m2.diagonal(d)
-        mask = ~np.isnan(d1) & ~np.isnan(d2)
-        d1, d2 = d1[mask], d2[mask]
-        nk = len(d1)
-        if nk < 2 or np.ptp(d1) == 0 or np.ptp(d2) == 0:  # exact: constant stratum
-            continue
-        r2k = np.sqrt(np.var(rankdata(d1) / nk) * np.var(rankdata(d2) / nk))
-        corrs.append(pearsonr(d1, d2)[0])
-        weights.append(nk * r2k)
-    if not weights:
+    if max_bins <= min_dist:
         return float("nan")
-    w = np.asarray(weights) / np.sum(weights)
-    return float(np.sum(np.asarray(corrs) * w))
+    x = _diagonals(_mean_filter(mat1, h), min_dist, max_bins)
+    y = _diagonals(_mean_filter(mat2, h), min_dist, max_bins)
+    r, cnt, _, _, mask = _rowwise_pearson(x, y)
+    xm, ym = np.where(mask, x, np.nan), np.where(mask, y, np.nan)
+    with np.errstate(invalid="ignore"):
+        const = (np.nanmax(xm, 1) == np.nanmin(xm, 1)) | (np.nanmax(ym, 1) == np.nanmin(ym, 1))
+    keep = (cnt >= 2) & ~const
+    if not keep.any():
+        return float("nan")
+    rx = rankdata(xm[keep], axis=1, nan_policy="omit")
+    ry = rankdata(ym[keep], axis=1, nan_policy="omit")
+    nk = cnt[keep].astype(float)[:, None]
+    r2k = np.sqrt(np.nanvar(rx / nk, axis=1) * np.nanvar(ry / nk, axis=1))
+    w = cnt[keep] * r2k
+    return float(np.sum(r[keep] * w / w.sum()))
 
 
 # --- PCC ----------------------------------------------------------------------------------
