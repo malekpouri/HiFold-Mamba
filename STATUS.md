@@ -35,3 +35,10 @@ nohup python3 -I scripts/download_dnalongbench.py "$R" contact_map_prediction/ta
 # Akita reproduction (after the cache exists)
 PYTHONPATH=src nohup .venv/bin/python -m hifold.train configs/akita_repro.yaml > runs_akita.log 2>&1 &
 ```
+
+## Paper (goal: Q1-ready manuscript), state 2026-10-23
+- `paper/manuscript.md` rewritten as a **Stage 1 Registered Report**, with real pilot data, verified refs in `paper/references.bib`, and Figs 1–2. Built to `paper/manuscript.pdf` with `pandoc manuscript.md --citeproc -o manuscript.pdf --pdf-engine=xelatex -V geometry:margin=2.2cm -V mainfont="DejaVu Serif"`.
+- Critic round 1: `paper/review/round1.md`. **Done:** M1 code (`src/hifold/eval/structure_eval.py` plus tests, exact weighted AUROC/AP, deduplication across windows).
+- **Next (author pass 1):** revise the manuscript for M1–M6 and m1–m9; power simulation against the max of 3 baselines (M3); 3 Mb-block sensitivity; then critic round 2.
+- **User decisions D1–D5** are listed in `round1.md`.
+- **Do NOT score trained models on the test set before Stage 1 acceptance.**

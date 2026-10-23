@@ -1,396 +1,327 @@
-# HiFold-Mamba: Insulation-Constrained Multi-Scale State-Space Modeling for Megabase-Scale Prediction of 3D Chromatin Folding
-
-> **Draft status — protocol / registered-report stage.** Methods and the analysis plan are complete and pre-specified. **Results and Discussion are deliberately empty**: no experiment has been run. Every table in §5 is a placeholder with explicit `[TBD]` cells. Nothing in this file may be filled in by estimation, extrapolation or expectation — only from logged experimental runs with a config hash and a commit id. Title is conditional (see §8).
-
-**Authors**
-
-Mohammad Malekpouri^a,\*^ · Somayeh Lotfi^a^
-
-^a^ Department of Computer Engineering, BA.C., Islamic Azad University, Bandar Abbas, Iran
-
-\* Corresponding author. Mohammad Malekpouri — ORCID [0009-0001-6278-6163](https://orcid.org/0009-0001-6278-6163)
-Somayeh Lotfi — ORCID [0000-0002-7218-5388](https://orcid.org/0000-0002-7218-5388)
-
-**Code availability:** https://github.com/malekpouri/HiFold-Mamba (protocol only; no code written yet)
-
+---
+title: "Does a map-level insulation constraint improve sequence-based prediction of 3D genome folding? A Stage 1 Registered Report with a reverse-complement-equivariant state-space model (HiFold-Mamba)"
+author:
+  - Mohammad Malekpouri (corresponding; ORCID 0009-0001-6278-6163)
+  - Somayeh Lotfi (ORCID 0000-0002-7218-5388)
+date: "Stage 1 protocol, version 2026-10-23"
+bibliography: references.bib
+link-citations: true
 ---
 
-## Abstract
+**Affiliation.** Department of Computer Engineering, BA.C., Islamic Azad University, Bandar Abbas, Iran.
 
-*(Written last. Results sentences stay blank until §5 is filled.)*
+**Article type.** Stage 1 Registered Report (introduction, methods, analysis plan and pilot data; no confirmatory outcome has been observed). Code, configurations and pilot outputs: <https://github.com/malekpouri/HiFold-Mamba> (commit recorded at submission).
 
-**Background.** Sequence-to-contact-map models such as Akita and DeepC predict Hi-C and Micro-C maps at roughly megabase scale with convolutional architectures. On the DNALongBench contact-map task, general long-range DNA models (HyenaDNA, Caduceus) fall well short of the task-specific Akita model. The open problem is not the choice of sequence backbone but the combination of an efficient long-range encoder, structural inductive bias, and generalization across cell types and sequence variants.
+# Abstract
 
-**Methods.** We present HiFold-Mamba, a sequence-only model that predicts 448×448 contact maps from 1,048,576 bp of DNA at 2,048 bp resolution on the DNALongBench contact-map task. It combines (i) a reverse-complement-equivariant bidirectional state-space (Mamba) encoder over 512 bins, (ii) a multi-scale state mixer, (iii) a symmetric biaffine pairwise head with a learned distance bias, (iv) a **differentiable insulation constraint computed from the predicted map itself**, rather than from an auxiliary head, and (v) a FiLM cell-type adapter enabling few-shot adaptation to cell lines never seen in training. The model is trained on five cell lines; the benchmark's four remaining lines are reserved for few-shot evaluation. All hypotheses, metrics, baselines, statistical tests and stopping rules were pre-specified before training.
+**Background.** Sequence-to-contact-map models predict Hi-C and Micro-C maps from DNA alone, but their training objectives are pixel-wise, while the features that matter biologically (domain boundaries, insulation, loops) are summaries of the map. Loss terms built on such summaries have been used for Hi-C resolution enhancement, but whether they improve *sequence-based* prediction, judged against annotations that are independent of the training data, has not been tested under a pre-specified design. On the DNALongBench contact-map task the task-specific Akita model remains well ahead of general long-range DNA models (published stratum-adjusted correlation, SCC, 0.230 vs. 0.115–0.133).
 
-**Results.** `[TBD — not yet run]`
+**Proposed study.** We pre-register four hypotheses for HiFold-Mamba, a sequence-only model (1,048,576 bp → 448 × 448 map at 2,048 bp) built from a reverse-complement (RC)-equivariant convolutional tower, RC-equivariant bidirectional Mamba blocks, a multi-scale state mixer and a symmetric pairwise head. **H1:** it exceeds the per-block best of three trained baselines (reproduced Akita, a parameter-matched Transformer and a parameter-matched dilated CNN) by ≥ 0.01 SCC. **H2:** a differentiable insulation and boundary constraint, computed from the predicted map with the same operator as from the observed map, improves boundary AUROC and loop AP on independent 4DN boundary calls and ENCODE CTCF ChIA-PET loops, without lowering SCC. **H3:** pretraining plus few-shot adaptation beats training from scratch on four held-out cell lines. **H4** (variant effects) is scoped by data availability. Tests use a paired block bootstrap over 237 one-megabase test blocks (one-sided α = 0.025).
 
-**Conclusions.** `[TBD]`
+**Pilot data.** We verified the benchmark target against Akita's processing code and the released files, verified the full-network equivariance identity numerically, and profiled the model on an 8 GB GPU. On the test set a non-learned reference that copies the other cell lines' measured maps at the same locus scores SCC 0.227 with the benchmark's implementation, as high as published Akita (0.230). The benchmark and HiCRep SCC weightings rank windows only moderately concordantly (Spearman ρ = 0.54). A simulation calibrated on the pilot data shows ≥ 90% power for a true ΔSCC of 0.015–0.02, but only 43–52% at the 0.01 margin, which we report as a design constraint.
 
-**Keywords:** 3D genome; chromatin folding; Hi-C; Micro-C; topologically associating domains; state-space models; Mamba; reverse-complement equivariance; insulation score.
+**Keywords:** 3D genome; Hi-C; Micro-C; insulation; TAD boundaries; chromatin loops; state-space models; reverse-complement equivariance; registered report.
 
----
+# 1. Introduction
 
-## 1. Introduction
+## 1.1 Background
 
-The spatial organization of the genome into compartments, topologically associating domains (TADs) and CTCF-anchored loops shapes transcriptional regulation, and its disruption by structural variants causes disease. Hi-C and Micro-C measure this organization genome-wide but are costly per cell type and condition, which motivates models that predict contact maps directly from DNA sequence.
+Chromosomes fold into compartments, topologically associating domains (TADs) and CTCF-anchored loops, and disruption of this folding by structural variants can rewire gene regulation [@rao2014; @krietenstein2020]. Hi-C and Micro-C measure folding genome-wide but are expensive per cell type and condition. Models that predict contact maps directly from DNA sequence therefore serve two purposes: they test how much of folding is encoded in sequence, and they allow in-silico perturbation of that sequence.
 
-Two lines of work exist. **Task-specific models** map sequence (optionally with epigenomic tracks) to contact maps using convolutional or hybrid convolution–attention encoders: Akita (Fudenberg et al. 2020), DeepC (Schwessinger et al. 2020), Orca (Zhou 2022), C.Origami (Tan et al. 2023) and, most recently, AlphaGenome (Avsec et al. 2026). **General long-range DNA models**, among them HyenaDNA (Nguyen et al. 2023) and Caduceus (Schiff et al. 2024), learn sequence representations over long contexts and are fine-tuned for downstream tasks. On the DNALongBench contact-map task, they score roughly half as well as the task-specific model: an average of 0.115–0.133 for HyenaDNA and the two Caduceus variants against 0.230 for Akita (Cheng et al. 2025, preprint values).
+Sequence-only models now span several scales. Akita predicts 448 × 448 maps at 2,048 bp from 1,048,576 bp of sequence with a convolutional tower and a 2D head [@fudenberg2020]. DeepC uses megabase-scale transfer learning [@schwessinger2020]. Orca predicts from kilobase to whole-chromosome scale [@zhou2022]. AlphaGenome predicts contact maps among thousands of tracks from 1 Mb of sequence [@avsec2026]. Models that add cell-type-specific inputs, for example C.Origami (sequence with CTCF and accessibility) [@tan2023] and Hi-Compass (accessibility only) [@sun2026], address cross-cell-type prediction, which sequence alone cannot.
 
-This gap is usually framed as a backbone problem, and the obvious response — replace convolutions or attention with a state-space model (Gu & Dao 2023) — is not by itself a contribution. Caduceus already pairs a bidirectional Mamba with reverse-complement (RC) equivariance for DNA. ChiMamba (Zhang et al. 2024) applies a bidirectional Mamba to chromatin-interaction prediction, using sequence together with chromatin accessibility in six human cell lines, according to its abstract `[full chapter to be read; see §2.1]`. A paper whose claim is "Mamba instead of attention" is therefore already answered.
+## 1.2 What is not known
 
-We take a different position. At the resolution of this task — 512 bins per megabase window — attention over bins is computationally cheap, so a state-space encoder offers **no efficiency advantage at this scale**, and we make no such claim. What a long-range encoder can offer is a representation in which **structural priors are expressible and enforceable**. Our contribution is accordingly:
+**(i) Whether objectives defined on map-level structure help sequence-based prediction.** Sequence-to-map models are trained with pixel-wise losses (mean squared error for Akita and the DNALongBench baselines [@fudenberg2020; @cheng2025]). The biologically important outputs are summaries of the map: insulation profiles, boundary positions and loop calls. Structure-aware losses exist in neighbouring problems. VEHiCLE, a Hi-C resolution-enhancement network, adds an insulation-vector loss and a loss on its derivative (a "delta" vector marking boundaries) [@highsmith2021]. Hi-Compass adds a structural-similarity (SSIM) term to an accessibility-based predictor [@sun2026]. Two things are untested: whether such terms help when the input is sequence alone and the target is a distance-normalized log observed/expected (O/E) map, and whether any gain survives evaluation against boundaries and loops that were not derived from the training data. A model whose insulation term is scored with boundaries called from its own training maps is graded partly on what it was told to fit.
 
-1. **An insulation constraint that acts on the predicted map.** Insulation and TAD-boundary scores are computed from the predicted contact map with the same operator applied to the observed map, so the gradient of the structural loss reaches the map itself. A wrong map necessarily yields wrong insulation. This differs from auxiliary structure heads, whose outputs can be correct while the map is not.
-2. **Network-wide RC equivariance.** We require f(RC(x)) = rot₁₈₀(f(x)) for the complete network — convolutional encoder, state-space blocks, multi-scale mixer, pairwise head and cell-type adapter — not only for the state-space blocks, and we verify it with a numerical unit test as a precondition for training.
-3. **Multi-scale state mixing**, combining shallow, intermediate and deep encoder states so that domain-scale and loop-scale structure are modelled jointly.
-4. **Few-shot cell-type adaptation** through a FiLM cell-type embedding, evaluated by leave-one-cell-line-out transfer against training from scratch under an identical compute budget.
-5. **A pre-specified analysis plan**, including per-block statistical testing against the strongest baseline in each genomic block, oracle-style reference baselines that quantify how much of a map is cell-type-shared, independent (non-circular) structural evaluation, and explicit stopping rules under which the central claim is withdrawn.
+**(ii) How strong current sequence-only predictions are, relative to what a locus alone explains.** On DNALongBench's contact-map task, Akita reaches SCC 0.230 averaged over its five cell lines, and HyenaDNA and Caduceus 0.115–0.133 [@cheng2025] (Table 4 there). Contact maps are partly shared across cell types. How much of the published accuracy is cell-type-specific is not reported. It matters for interpreting any gain (Section 3.3).
 
-### 1.1 Relation to prior work
+**(iii) Whether published differences are statistically resolved.** Benchmark results are typically means over windows, without a test that respects the overlap and spatial correlation of genomic windows. A recent study imputing 4DN contact maps found its model beat the strongest simple baseline in only 8 of 14 test cases [@min2025]. That is a reminder that simple references are hard to beat and that gains must be tested, not asserted.
 
-| Model | Encoder | Inputs | Window / resolution | Relation to this work |
+## 1.3 This study
+
+We register a design that answers (i), with (ii) and (iii) built into the analysis. The test vehicle is HiFold-Mamba, an RC-equivariant bidirectional state-space model. We do **not** claim the encoder family as a contribution: bidirectional, RC-equivariant Mamba layers for DNA are the core of Caduceus [@schiff2024], and a bidirectional Mamba has been applied to chromatin-interaction prediction from sequence and accessibility (ChiMamba) [@zhang2024]. At 512 bins per window, attention is computationally cheap, so we make **no efficiency claim**. The encoder matters to this study only because the matched Transformer and CNN ablations (H1, Section 2.4) separate encoder choice from the structural objective (H2).
+
+Contributions, conditional on the pre-registered outcomes:
+
+1. A **pre-registered test (H2) of a map-level insulation and boundary constraint** for sequence-based contact-map prediction. The constraint is computed from the predicted map with exactly the operator applied to the observed map, adapted from the insulation-loss idea of VEHiCLE [@highsmith2021] to a log-O/E target. It is evaluated on **independent** boundary and loop annotations, with the accessions fixed in this protocol.
+2. An **RC-equivariant network end to end**: tower, state-space blocks, multi-scale mixer, pairwise head, FiLM cell adapter and per-cell distance bias. f(RC(x), c) = rot₁₈₀ f(x, c) holds exactly and is verified numerically (pilot, Section 3.2).
+3. A **statistical design** for this benchmark: per-block best baseline, paired block bootstrap, a simulation-based power analysis, locus-shared references kept outside the comparison set, and conditional claims fixed in advance (Section 2.15).
+4. Pilot measurements of independent interest: a non-learned locus-shared reference that matches published Akita on the benchmark metric, and a moderate disagreement between two SCC weightings in common use (Section 3.3).
+
+# 2. Methods
+
+## 2.1 Data
+
+**Benchmark.** DNALongBench contact-map task [@cheng2025], Harvard Dataverse doi:10.7910/DVN/AZM25S (CC0), downloaded 2026-10-21 to 2026-10-23, every file MD5-verified against the Dataverse record. Genome build hg38. Inputs are 1,048,576 bp windows (one-hot). Targets are 448 × 448 maps at 2,048 bp after cropping 32 bins per side, stored as the upper triangle with diagonal offset 2 (99,681 values per map and cell line).
+
+**Training cell lines (five).**
+
+| Line | Assay (source) | Akita/DNALongBench split (train / valid / test windows) |
+|---|---|---|
+| HFF | Micro-C [@krietenstein2020]; 4DN 4DNFIP5EUOFX | 7,008 / 419 / 413 |
+| H1-hESC | Micro-C [@krietenstein2020]; 4DN 4DNFI1O6IL1Q | same windows |
+| GM12878 | in situ Hi-C, MboI [@rao2014] | same windows |
+| IMR-90 | in situ Hi-C, MboI [@rao2014] | same windows |
+| HCT116 | in situ Hi-C, unsynchronized [@rao2017] | same windows |
+
+**Held-out cell lines (H3 only; four).** HAP1, HeLa, HepG2 and K562, which DNALongBench added from 4DN with its own windows (7,009 / 6,342 / 6,291) on the same 354 virtual contigs. We checked that none of their validation or test windows overlaps an Akita training window, and none of Akita's validation or test windows overlaps one of their training windows (Section 3.1). These lines are never used in training or pretraining.
+
+**Split.** The official files: random non-overlapping virtual contigs, assigned 8:1:1 [@fudenberg2020; @cheng2025]. No window-level random split is used anywhere. A chromosome-held-out split is a separate robustness analysis (Section 2.13).
+
+**Window coordinates.** The TFRecords carry no coordinates. Record *i* corresponds to window *i* of Akita's `sequences.bed`. We confirmed this by matching the stored one-hot sequence to hg38 for sampled records in every split (agreement > 0.99 in every sampled record; Section 3.1). Coordinates are needed for the genomic blocks of the bootstrap and for the structural annotations.
+
+## 2.2 Target space
+
+The target is the benchmark's processed map, used unchanged. From Akita's processing code (`akita_data_read.py`), the five training lines are ICE-balanced coolers at 2,048 bp, adaptively coarse-grained, divided by local expected (O/E), natural-log transformed, clipped to [−2, 2], with missing bins interpolated, the near-diagonal band set to 0 and a 2D Gaussian (σ = 1) applied. We confirmed in the files that values lie in [−2, 2], that no NaN or mask is shipped, and that no training, validation or test map is all-zero (Section 3.1). The four held-out lines were processed with `kernel_stddev 0`, i.e. **without** smoothing (their `options.json`). We use them unchanged and state this as a limitation. It does not bias Δ_H3, because both H3 arms see identical targets, but absolute SCC on these lines is not comparable with the training lines.
+
+No log or other transform is applied to the target or to predictions in the contact loss. Any transform inside a structural operator is applied identically to prediction and target (Section 2.6).
+
+## 2.3 Model
+
+Let x ∈ {A,C,G,T}^L with L = 1,048,576, and c a cell-line index. Channels-last features h ∈ ℝ^(L×2D) carry the RC action R(h) = flip_length(flip_channel(h)). With one-hot input in A, C, G, T order, R is exactly the reverse complement. Every layer is RC-equivariant (f ∘ R = R ∘ f), using Caduceus-style parameter sharing [@schiff2024]: RCPS(F)(h) = [F(h), R(F(R h))].
+
+* **Conv tower.** RC-equivariant stem convolution (kernel 15, 64 channels), then 11 blocks of RC convolution (kernel 5), RC LayerNorm (tied affine parameters [g, flip(g)]), GELU and max-pool 2. Channels 64–256. This takes 2^20 bp to 512 bins, followed by an RC-equivariant projection to d = 256. The tower is shared by all cell lines and runs once per window.
+* **State-space blocks.** 8 pre-norm residual blocks. Each applies RCPS around a projection to 128 channels followed by a bidirectional Mamba-1 layer [@gu2023] (forward and reversed scans, summed; d_state 16, expansion 2), then an RC-equivariant feed-forward sublayer (×2). The selective scan is a chunked, compiled pure-PyTorch implementation, tested against a sequential reference.
+* **FiLM cell adapter.** A learned embedding e_c ∈ ℝ^32 is linearly mapped to (γ, β), applied as h ← h + (1 + tie(γ)) ⊙ Mixer(LN(h)) + tie(β), where tie(v) = [v, flip(v)] keeps the modulation RC-symmetric [@perez2018]. Its initialization is zero.
+* **Multi-scale mixer.** The states after blocks 2, 5 and 8 are each average-pooled at 1, 2, 4 and 8 bins, upsampled, projected with RC-equivariant linear maps, summed and normalized.
+* **Pairwise head.** With Z the mixed representation, J the channel flip, and P, Q ∈ ℝ^(d×64): U = [ZP, (JZ)P] and V = [ZQ, (JZ)Q], giving
+  $$\hat C_c = \mathrm{crop}_{32}\Big(\mathrm{sym}\big(UV^\top/\sqrt{128} + b_{c,|i-j|}\big)\Big),\qquad \mathrm{sym}(M) = \tfrac12 (M + M^\top).$$
+  The pairing gives J M J = M for the bilinear term, so RC of the input rotates the map by 180°. The distance bias b_{c,|i−j|} is learned **per cell line**. The pilot targets show line-specific residual distance profiles after O/E normalization (trough −0.17 to −0.30), which a shared bias cannot express. A new held-out line gets its own bias, learned during fine-tuning.
+* **Size.** 3,322,560 parameters (paper configuration). The development-only 8 GB fallback configuration is never reported.
+
+**Equivariance precondition.** Unit tests assert f(R x, c) = rot₁₈₀ f(x, c) in fp32 (absolute tolerance 10⁻⁴, relative 10⁻⁵) for every component and for the full network. The full network is tested at full input length, on random and real sequences, in evaluation and deterministic training mode, with and without gradient checkpointing. A looser bf16 check is also run, and a negative control (an unpaired head) must fail. All pass (Section 3.2).
+
+## 2.4 Comparison set $\mathcal{B}$ and references
+
+$\mathcal{B}$, the set of trained sequence models against which H1 is tested, is fixed here:
+
+| Model in $\mathcal{B}$ | Definition | Parameters |
+|---|---|---|
+| Akita (reproduced) | PyTorch port of the published architecture with Keras semantics (pre-activation residual blocks, BatchNorm momentum and ε as in Keras, dilation rates 1, 2, 3, 5, 9, 16, 29, 50, mean outer product + distance channel, symmetrized 2D dilated residual stack), trained with the published optimizer (SGD, lr 0.0065, momentum 0.99575, clip 10, batch 2) and RC + ±11 bp shift augmentation | 746,149 |
+| Matched Transformer | HiFold with each Bi-Mamba replaced by multi-head self-attention over bins with a learned per-head bias on \|i − j\|, in the same RCPS wrapper (RC-equivariant) | 3,340,992 (+0.55 %) |
+| Matched CNN ("strong CNN") | HiFold with each Bi-Mamba replaced by a residual dilated 1D CNN (6 layers, dilation 2^k, width 73), in the same RCPS wrapper | 3,319,720 (−0.09 %) |
+
+The two matched models share the conv tower, FiLM adapter, mixer, head, data, optimizer, schedule and checkpoint rule with HiFold-Mamba, so they isolate the sequence mixer.
+
+**Not in $\mathcal{B}$.**
+
+* **Caduceus-Ph/PS and HyenaDNA.** Their published DNALongBench scores (SCC 0.115–0.133 [@cheng2025]) are far below Akita's, so they cannot be the per-block best often enough to change the H1 test. Fine-tuning them at 1 Mb context is outside our compute budget (Section 4). They appear in the results only as published context.
+* **Non-learned references, reported for context and never in $\mathcal{B}$.** (a) The *global cell-line mean*: the mean training map of the line, the same prediction for every window. (b) The *locus-shared mean*: the mean of the **other** four training lines' measured maps at the same window. (c) The same with a per-line offset. Because (b) and (c) use measured test-region maps, they are oracle-style references for how cell-type-shared a map is, not sequence predictors.
+
+Every retrained model receives the same EMA (decay 0.999), checkpoint-selection rule and tuning budget (no tuning beyond the published or matched settings). The Akita reproduction is checked against its published per-line scores [@cheng2025] on the benchmark metric.
+
+## 2.5 Training
+
+AdamW (weight decay 0.01), learning rate 3 × 10⁻⁴, 1,000-step warmup, cosine decay. bf16 autocast, with the selective scan in fp32. Gradient checkpointing; batch 1 window × 5 lines with 8-step accumulation (effective 8 windows). 70,080 steps, i.e. 10 passes over 7,008 windows. RC-equivariant models need no RC augmentation. All models use ±11 bp shift augmentation with N padding. **Checkpoint selection:** EMA weights with the highest mean validation SCC (HiCRep weighting, Section 2.7), evaluated every 7,008 steps. Three seeds (0, 1, 2) per model. Every run logs its configuration, configuration hash and git commit.
+
+## 2.6 Structural objective (H2)
+
+With $\tilde C = g(\hat C)$ and $\tilde C^{\mathrm{obs}} = g(C)$, where $g(x) = \exp(2\tanh(x/2))$ (smooth, about exp near 0, bounded to [e⁻², e²], the clip range of the target), the crossing-square insulation of bin *i* is
+$$I_i = \frac{1}{|\Omega_i|}\sum_{(a,b)\in\Omega_i}\tilde C_{ab},\qquad \Omega_i = \{(a,b): i-w \le a < i < b \le i+w\},\ w = 20\ \text{bins (40 kb)},$$
+defined for i ∈ [w, 448 − w). It is computed with an integral image, which makes it exactly differentiable [@crane2015]. The boundary strength is the depth of the log-insulation dip relative to its neighbourhood, $s_i(I) = \overline{\log_2 I}_{[i-5,i+5]} - \log_2 I_i$. Then
+$$\mathcal L = \mathcal L_{\text{contact}} + \lambda_{\text{ins}}\,\overline{(I(\hat C)-I(C))^2} + \lambda_{\text{bnd}}\,\overline{(s(I(\hat C))-s(I(C)))^2},$$
+with $\mathcal L_{\text{contact}}$ the masked MSE over the 99,681 upper-triangle values. Because the operator is linear in $\tilde C$ and g is smooth, the structural gradient reaches the map itself. A map with wrong domains cannot have correct insulation, which is not guaranteed by an auxiliary structure head.
+
+**Schedule (equal compute).** The *Base* arm trains with $\mathcal L_{\text{contact}}$ for all 70,080 steps. The *Struct* arm is identical, with the same seeds, up to step 52,560, and then adds the structural terms for the remaining 17,520 steps. Total optimizer steps are identical.
+
+**Choice of λ (pre-registered rule).** On a 1-seed pilot using **validation windows only**, we train the Struct arm for each (λ_ins, λ_bnd) ∈ {0.1, 0.3, 1.0}². Among settings whose validation SCC is within 0.005 of the Base pilot, we select the one with the highest validation AUROC against the independent boundaries (Section 2.8). Ties go to the smaller λ_ins + λ_bnd. If no setting meets the SCC condition, we take the smallest pair. The selected pair is then fixed for all seeds and for the test evaluation.
+
+**No loop term in v1.** An earlier internal plan included a loop loss. We drop it, because its only usable positives would come from the same ChIA-PET datasets used to evaluate loops, which would make H2's loop criterion partly self-supervised. H2's loop criterion therefore tests whether insulation and boundary constraints *transfer* to loops.
+
+## 2.7 Metrics
+
+**Primary: SCC with HiCRep weights** [@yang2017], per window and cell line. For strata d = 2, …, 447 (diagonal offset 2, as in the benchmark), we compute Pearson r_d between predicted and true values on the d-th diagonal, after converting values to ranks within the stratum (HiCRep's variance stabilization). We combine them as SCC = Σ_d w_d r_d / Σ_d w_d, with w_d = N_d · √(var(r1/N_d) · var(r2/N_d)). There is no 2D smoothing (h = 0), because the target is already smoothed. Strata with zero variance are skipped.
+
+**Secondary (always reported next to the primary).** SCC with the benchmark's released implementation (`scripts/metrics.py::scc`; stratum weights ≈ uniform, which up-weights long-distance strata) for comparability with published numbers; Pearson correlation (PCC) per window; SCC per distance band (10–100 kb, 100–500 kb, 0.5–0.92 Mb); MSE. Spearman correlation, if reported, is labelled as such.
+
+## 2.8 Structural evaluation data (independent of the training targets)
+
+Accessions were fixed and data downloaded (MD5-verified) before any model was trained:
+
+| Line | Boundaries (4DN processed `boundaries`, GRCh38) | Loops (ENCODE CTCF ChIA-PET `loops`, GRCh38) |
+|---|---|---|
+| HFF | 4DNFI3CGVRKU, in situ Hi-C, FA+DSG, DpnII [@akgol2021], 5 kb. Same lab as the Micro-C target; different assay and study | none available |
+| H1-hESC | 4DNFICEHILOK, Zhong lab, untreated control [@calandrelli2023], 5 kb | ENCFF401IWZ (ENCSR095SXC, Lee lab, JAX) |
+| GM12878 | 4DNFIQBWXNL1, Ren lab dilution Hi-C [@selvaraj2013], 10 kb | ENCFF780PGS (ENCSR184YZV, Ruan lab, JAX) |
+| IMR-90 | 4DNFIUI2RM2Q, Ren lab dilution Hi-C [@jin2013], 10 kb | ENCFF682YFU (ENCSR076TTY, Ruan lab, JAX) |
+| HCT116 | 4DNFIG49IPR6, Cremins lab, untreated WAPL-mAID2 cells [@emerson2022], 5 kb | ENCFF431BUN (ENCSR278IZK, Lee lab, JAX; unmodified HCT116) |
+
+None of these datasets is the source of a training target. For four of the five lines they come from a different laboratory.
+
+* **Boundaries.** We use the shipped 4DN boundary calls as the primary set, with no caller of our own. Their calling method (an insulation-score pipeline) is of the same family as our operator, which we state as a limitation. A bin is a positive if its 2,048 bp interval overlaps a called boundary interval extended by one bin on each side. All other scorable bins are negatives. The score is s_i of the **predicted** map (Section 2.6). AUROC and average precision are computed per line over all scorable test bins (i ∈ [w + 5, 448 − w − 5)).
+* **Loops.** Positives are ChIA-PET PET clusters with **PET count ≥ 10** whose anchors' midpoints fall in two different output bins inside the same window, at separation 20 kb–915 kb. Negatives are all other bin pairs within the same windows, matched to positives on separation in 10 log-spaced distance bins (five negatives per positive). The score is the predicted map value at the pair. Loop AP is computed per line and then averaged over the four lines that have loops.
+* **Secondary, assay-orthogonal set (reported, not tested).** ENCODE CTCF ChIP-seq peaks containing a CTCF motif.
+* **Internal consistency only.** Boundaries called from the observed DNALongBench maps by our own operator.
+
+## 2.9 Statistical analysis
+
+All confirmatory tests use one procedure:
+
+1. Score each test window, cell line, model and seed. Average over the five lines, then over the three seeds.
+2. Assign each window to the 1 Mb genomic block containing its midpoint (237 blocks in the test set) and average within blocks. Blocks, not windows, are the resampling unit, because windows overlap and neighbouring loci are correlated.
+3. For H1: Δ_b = S_ours,b − max_{m∈$\mathcal{B}$} S_m,b. The per-block maximum is a conservative choice that prevents post-hoc selection of the weakest baseline.
+4. Paired bootstrap over blocks, 10,000 resamples. One-sided test of H₀: E[Δ] ≤ 0 at α = 0.025, with the 95% percentile interval. Its lower limit is the 97.5% one-sided bound. The p-value is (1 + #{Δ* ≤ 0}) / (B + 1).
+
+**Criteria.**
+
+| Hypothesis | Success requires |
+|---|---|
+| H1 | mean Δ ≥ +0.01 **and** lower bound > 0 |
+| H2 | **all three hold** (intersection–union, so no multiplicity correction): (a) Struct − Base independent-boundary AUROC ≥ +0.02 with lower bound > 0, with the block bootstrap applied to per-block AUROC contributions via paired resampling of blocks and recomputing AUROC on the resampled bin set; (b) loop AP ≥ +0.02, same procedure; (c) SCC non-inferiority: lower bound of Δ SCC(Struct − Base) > −0.005 |
+| H3 | Δ_H3 = SCC(pretrain + few-shot) − SCC(scratch), per held-out line and limited regime (10 %, 25 %, 50 %), Holm-corrected over the three regimes within a line. Success requires a positive one-sided bound in at least one regime in **at least two of the four** lines |
+| Multi-scale (N-M) | H1 met **and** Δ SCC(full − no-mixer ablation) has a lower bound > 0 |
+
+A per-window Wilcoxon signed-rank test is reported as a secondary, anti-conservative check only.
+
+## 2.10 Sample size and power
+
+The test set is fixed by the benchmark (413 windows in 237 blocks), so the question is the sensitivity of the design, not the sample size. We simulated block-level paired differences with the between-block standard deviation observed in the pilot (0.193, HiCRep SCC of the locus-shared reference averaged over lines). The between-model correlation was set to ρ ∈ {0.8, 0.9, 0.95, 0.98}, and we applied the full H1 rule (2,000 simulations × 2,000 bootstrap resamples; `scripts/power_analysis.py`).
+
+| True Δ | ρ = 0.8 | ρ = 0.9 | ρ = 0.95 | ρ = 0.98 |
 |---|---|---|---|---|
-| Akita (Fudenberg et al. 2020) | CNN + 2D head | Sequence | 1,048,576 bp, 2,048 bp bins, 448×448 | Defines our task setting; primary baseline |
-| DeepC (Schwessinger et al. 2020) | CNN | Sequence | Different window/resolution | Included only if fully retrained in our format |
-| Orca (Zhou 2022) | Multi-scale CNN | Sequence | Up to chromosome scale, multi-resolution | Already covers multi-megabase scales; we therefore claim megabase scale only |
-| C.Origami (Tan et al. 2023) | CNN + Transformer | Sequence + CTCF + ATAC | ~2 Mb, ~8 kb | Cell-type-aware; comparison deferred to the epigenomic-input phase |
-| AlphaGenome (Avsec et al. 2026) | U-Net + Transformer | Sequence | 1 Mb input, many output tracks | Optional strong baseline |
-| HyenaDNA (Nguyen et al. 2023); Caduceus-Ph/PS (Schiff et al. 2024) | Hyena; bidirectional RC-equivariant Mamba | Sequence | Long context | Caduceus supplies the RC-equivariant BiMamba design we build on; it is a baseline, not our novelty |
-| ChiMamba (Zhang et al. 2024) | Bidirectional Mamba | Sequence + accessibility | `[to extract]` | Closest architectural precedent; resolved in §2.1 before training |
+| 0 (false-positive rate) | 0.028 | 0.023 | 0.005 | 0.000 |
+| 0.005 | 0.10 | 0.14 | 0.11 | 0.02 |
+| 0.010 | 0.24 | 0.43 | 0.48 | 0.52 |
+| 0.015 | 0.48 | 0.78 | 0.89 | 0.98 |
+| 0.020 | 0.71 | 0.95 | 0.99 | 1.00 |
+| 0.030 | 0.96 | 1.00 | 1.00 | 1.00 |
 
-Citations, the Akita and DNALongBench task settings, and AlphaGenome's input length are verified against primary sources. Still to verify: the encoder and window entries for DeepC, Orca and C.Origami, and all ChiMamba details.
+The false-positive rate stays at or below α. Because H1 requires the **point estimate** to reach +0.01, power at a true effect of exactly 0.01 cannot exceed about 0.5. The design reaches ≥ 0.9 power for true effects of 0.015 (ρ ≥ 0.95) to 0.02 (ρ = 0.9). The paired-model correlation ρ is unknown before training. It will be estimated on **validation** windows from the Akita reproduction and the first HiFold seed, and reported with the power table, before any test evaluation. We keep the 0.01 margin, set as the smallest gain worth reporting, and state openly that a non-significant result at that size is inconclusive, not evidence of no effect.
 
----
+## 2.11 H3: few-shot adaptation to held-out lines
 
-## 2. Task and data
+For each held-out line (HAP1, HeLa, HepG2, K562), the **pretrain arm** starts from the selected five-line HiFold-Mamba checkpoint (seed-matched) with a new cell embedding and a new distance-bias row, and fine-tunes all weights. The **scratch arm** has the same architecture with random initialization. Both arms use identical data and identical optimizer steps: 3,504 steps, batch 1, 8-step accumulation, learning rate 1 × 10⁻⁴ with 200-step warmup and cosine decay. Fine-tuning data are contiguous-block subsets (10 %, 25 %, 50 % of the line's official training windows, selected by contig, identical across arms), plus the full training set (reported, not counted toward success). Evaluation is on the line's **official test windows**, aggregated into 1 Mb blocks (these windows overlap at 32 kb stride). Three seeds per arm. Read-depth-limited regimes are out of scope (they would need reprocessing from read pairs).
 
-### 2.1 Prior-art resolution (precondition)
+## 2.12 H4: structural variants
 
-Before any training, the ChiMamba chapter is read in full and its task, inputs, output format, resolution, window size and split are tabulated. If ChiMamba performs sequence-only prediction of contact maps at comparable resolution with a bidirectional Mamba, contribution (1)–(5) above is re-scoped and ChiMamba becomes a required baseline. Otherwise it is positioned as concurrent work on a different task. The outcome is reported either way.
+H4 is confirmatory only if at least ten structural variants with published before/after contact maps in a compatible assay are assembled **before** Stage 2 analysis. The criterion is the sign agreement of predicted vs. observed change in insulation at the variant, tested with a one-sided binomial test at α = 0.025. Otherwise H4 is reported as an in-silico analysis (deletions and inversions of CTCF sites and boundaries), labelled exploratory, with no claim about measured biological effects.
 
-### 2.2 Benchmark
+## 2.13 Robustness analysis (secondary)
 
-| Item | Specification |
+A chromosome-held-out split (test chr1, chr8, chr12; validation chr3, chr6; windows re-derived from Akita's coordinates) is trained with one seed for HiFold-Mamba and each model in $\mathcal{B}$. It is reported separately, never pooled with the primary results and never used for any confirmatory decision.
+
+## 2.14 Ablations (each 3 seeds, same schedule; reported with the §2.9 procedure, exploratory except N-M)
+
+* Bi-Mamba → matched Transformer and → matched CNN (these are the $\mathcal{B}$ members).
+* **− RC equivariance.** Same layer shapes and FLOPs, with each reverse half given its own parameters and RC augmentation used instead. This has 6.64 M parameters, twice the full model's, so it favours the ablation.
+* **− multi-scale mixer.** The pair head sees only the final state at full resolution (2.96 M parameters).
+* Struct vs. Base (H2), and each structural term alone (λ_bnd = 0 or λ_ins = 0).
+* Insulation window w ∈ {10, 40} (one seed; Struct arm only).
+
+## 2.15 Interpretation, conditional claims and stopping rules
+
+The final title and claims follow from the outcomes, fixed now:
+
+| Outcome | Claim and title |
 |---|---|
-| Benchmark | DNALongBench contact-map task (Cheng et al. 2025), built on the Akita setting (Fudenberg et al. 2020) |
-| Genome build | hg38 (GRCh38) |
-| Input | 1,048,576 bp of DNA sequence, one-hot encoded; sequence only |
-| Binning | 512 bins of 2,048 bp; 32 bins cropped from each edge, which serve as sequence context only |
-| Output | 448×448 symmetric contact map; scored on the upper triangle with diagonal offset 2 (99,681 values) |
-| Training cell lines | HFF and H1-hESC (Micro-C; Krietenstein et al. 2020), GM12878 and IMR-90 (Hi-C; Rao et al. 2014), HCT116 (Hi-C; Rao et al. 2017) |
-| Few-shot held-out lines | HAP1, HeLa, HepG2, K562: the benchmark's remaining four lines, never used in training or pretraining |
-| Split | Official DNALongBench train / validation / test files: non-overlapping virtual contigs assigned 8:1:1 |
-| Sample counts | 7,008 / 419 / 413 sequences |
-| Target transform | The DNALongBench processed target, used unchanged (below) |
+| H2 met | *insulation-constrained* prediction (with H1 and N-M: insulation-constrained multi-scale state-space modelling) |
+| H2 not met | no structure-constrained claim anywhere, including the title |
+| H1 met, N-M met, H2 not met | multi-scale state-space modelling |
+| H3 met only | few-shot cell-type adaptation |
+| None of H2, N-M, H3 met | reported as a null result for all three questions, with the full pre-registered analysis |
 
-Baseline reproductions are compared with published values per cell line for the five training lines, because the benchmark's averages pool all nine lines.
+We never claim efficiency at 512 bins, "multi-megabase" scale, physical or energy-based modelling, or RC-equivariant bidirectional Mamba as a contribution in itself. The locus-shared references are never a stopping condition. The global cell-line mean is a sanity floor only. The pilot shows it scores SCC ≈ 0 in this target space (Section 3.3), so it cannot discriminate between models.
 
-**Target space.** Following Akita, contact matrices are ICE-balanced, adaptively coarse-grained, normalized for distance-dependent decay, natural-log transformed, clipped to (−2, 2), linearly interpolated over missing bins and smoothed with a 2D Gaussian (σ = 1). The result is a log observed/expected map that takes negative values. Before any loss is implemented, the transform, value range, any shipped masks and the diagonal offset are confirmed in the released files. The model is trained and evaluated in the benchmark's own target space so that its scores are commensurable with reproduced baselines. No alternative normalization (for example log1p of balanced counts) is substituted, because that would both break comparability and reintroduce distance-decay dominance.
+## 2.16 Data access and bias control
 
-### 2.3 Robustness split
+Data observed before this protocol was frozen:
 
-A chromosome-held-out split (test chr1, chr8, chr12; validation chr3, chr6) is reported as a separate robustness analysis with all baselines retrained on that split. Its numbers are never pooled with the primary benchmark numbers. Window-level random splitting is never used, in any setting, because overlapping windows leak structure between partitions.
+* Training and validation targets (used for development, profiling, the λ and ρ pilots).
+* Test-set **targets**, used only for non-learned references (global mean, locus-shared mean), the SCC-variant comparison and the power analysis. **No trained model has been evaluated on the test set.**
+* The independent boundary and loop files (downloaded and checked for format; not intersected with any prediction).
 
----
+Safeguards:
 
-## 3. Model
+* Test-set scoring of trained models is disabled until Stage 1 acceptance. All model selection uses validation data.
+* The evaluation code is frozen at the commit recorded at submission. Any later change is listed with its reason in the Stage 2 report.
+* The Akita reproduction is trained before acceptance, on training and validation windows only. Its validation scores are pilot data.
 
-Let x ∈ {A,C,G,T}^L with L = 1,048,576, and let c index the cell line. The model outputs Ĉ ∈ ℝ^(448×448), symmetric.
+## 2.17 Study design table
 
-### 3.1 Local sequence encoder
+| Question | Hypothesis | Sampling plan | Analysis plan | Rationale for test sensitivity | Interpretation given different outcomes | Theory that could be shown wrong |
+|---|---|---|---|---|---|---|
+| Does HiFold-Mamba predict maps more accurately than the strongest trained sequence model per locus? | H1: mean block ΔSCC ≥ 0.01 vs. per-block best of $\mathcal{B}$ | Official test set, 413 windows / 237 blocks; 3 seeds per model | Section 2.9 block bootstrap, one-sided α = 0.025 | Power ≥ 0.9 at true Δ 0.015–0.02 (Section 2.10); 0.43–0.52 at 0.01 | Met: accuracy claim. Not met: no accuracy claim; encoder comparison reported as null | That sequence-mixer choice inside an identical network changes accuracy |
+| Does a map-level insulation and boundary constraint improve structural recovery? | H2: AUROC ≥ +0.02, loop AP ≥ +0.02, SCC non-inferior | Same windows; independent boundaries (5 lines) and loops (4 lines) | Struct vs. Base, equal steps, Section 2.9 | Same blocks; joint criterion | Met: insulation-constrained claim. Not met: claim removed, reported as null | That map-derived structure losses add information beyond pixel-wise MSE for sequence models |
+| Does pretraining transfer to unseen cell lines with little data? | H3 | 4 held-out lines × 3 regimes, 3 seeds per arm | Δ_H3 per line, Holm within line; ≥ 2 of 4 lines | Equal compute and data per arm | Met: few-shot claim. Not met: no transfer claim | That sequence-learned folding grammar transfers across cell types through a cell embedding alone |
+| Does multi-scale mixing contribute? | N-M | As H1 | Full vs. no-mixer, Section 2.9 | As H1 | Met with H1: multi-scale claim | That combining depths and scales helps beyond the deepest state |
 
-A stack of 1D convolutions (kernel width 5–9) with pooling reduces base-pair resolution to 512 bins of 2,048 bp. Kernels are RC-paired, so complementing and reversing the input permutes and reverses the encoder output rather than changing it. `[Exact channel widths, depth and pooling schedule to be specified.]`
+# 3. Pilot data
 
-### 3.2 RC-equivariant bidirectional state-space encoder
+All pilot numbers come from logged scripts in the repository. None involves a trained model on the test set.
 
-Eight to twelve blocks operate over the 512-bin sequence. Each block applies a selective state-space (Mamba) scan in the forward direction and in the RC direction **with shared parameters**, following the MambaDNA/Caduceus-PS construction; the RC-path output is mapped back to the original orientation before combination. Each block carries normalization and a feed-forward sublayer.
+## 3.1 Data verification
 
-### 3.3 Multi-scale state mixer
+* **Target transform (G1).** Confirmed against Akita's processing code and the files, as described in Section 2.2. Shipped values lie in [−2, 2]; no NaN; zero all-zero maps among 7,008 / 419 / 413 windows in any of the five lines.
+* **Coordinates.** For sampled records in every split (74 train, 6 validation, plus the test set), the stored one-hot sequence matches hg38 at the window's coordinates with > 99 % identity. Record order equals window order.
+* **Split hygiene.** Zero overlap between the held-out lines' validation and test windows and Akita's training windows, and zero overlap in the reverse direction (`scripts/check_h3_overlap.py`).
+* **Residual distance profiles.** Each line has its own residual P(s) after O/E normalization, with troughs of −0.17 to −0.30. This motivated the per-cell distance bias, which a synthetic-data training test confirms is needed to fit line-specific profiles (`tests/test_train_smoke.py`).
 
-Shallow, intermediate and deep block outputs are combined by pyramidal pooling and returned to 512-bin resolution. Pooling and combination are symmetric under RC. This supplies domain-scale context and loop-scale detail to the pairwise head simultaneously.
+## 3.2 Implementation checks
 
-### 3.4 Pairwise head
+* **Equivariance.** All equivariance tests pass in fp32 (10⁻⁴ / 10⁻⁵), including the full-length network on real sequence. The negative control (unpaired head) is detected. The − RC ablation is verified to break equivariance while keeping the outputs symmetric. In total, 55 unit tests pass at the protocol commit.
+* **Metrics.** The vectorized benchmark SCC reproduces the released loop implementation exactly. HiCRep SCC is tested against a direct implementation.
+* **Compute** (RTX 5050, 8 GB, bf16, one window × five lines): HiFold-Mamba 1.34 s per step at 3.84 GiB peak; matched Transformer 0.50 s; matched CNN 0.47 s; Akita 0.25 s per step at batch 2 (4.73 GiB).
 
-From the mixed representation Z ∈ ℝ^(512×d), two projections U, V ∈ ℝ^(512×d) give
+## 3.3 Reference baselines on the test set
 
-$$\hat{C} = \mathrm{crop}_{32}\!\left(\mathrm{sym}\!\left(\frac{UV^{\top}}{\sqrt{d}} + b_{|i-j|}\right)\right), \qquad \mathrm{sym}(M) = \tfrac{1}{2}(M + M^{\top})$$
-
-with b a learned function of genomic separation. Symmetry is architectural, so no symmetry penalty is required; U and V are RC-paired so that RC of the input yields a 180° rotation of Ĉ.
-
-### 3.5 Cell-type adapter
-
-A learned embedding e_c per cell line produces FiLM parameters γ_c, β_c = MLP(e_c), applied in every state-space block as Z ← γ_c ⊙ Z + β_c. The parameters depend on cell line only, never on strand, and respect the channel pairing that RC equivariance imposes. This adapter is required, not optional: it carries both multi-cell-line training and few-shot adaptation.
-
-### 3.6 Equivariance as a precondition
-
-The full network must satisfy f(RC(x), c) = rot₁₈₀(f(x, c)), where rot₁₈₀(C)_ij = C_{n−1−i, n−1−j}. A unit test asserts this in fp32 (absolute tolerance 10⁻⁴, relative 10⁻⁵) and in bf16 (relative tolerance 10⁻²), on random and real sequences, in evaluation mode and in a deterministic training mode, with and without gradient checkpointing. **Training does not begin until it passes.** The symmetric edge crop preserves the identity.
-
----
-
-## 4. Training and analysis plan
-
-### 4.1 Objective
-
-$$\mathcal{L} = \mathcal{L}_{\text{contact}} + \lambda_{\text{ins}}\mathcal{L}_{\text{ins}} + \lambda_{\text{bnd}}\mathcal{L}_{\text{bnd}} + \lambda_{\text{loop}}\mathcal{L}_{\text{loop}}$$
-
-ℒ_contact is a masked error on the benchmark target; masked, blacklisted and unbalanced bins and the excluded near-diagonal band never contribute to any loss or metric.
-
-**Differentiable insulation.** A single differentiable transform g maps both the prediction and the target to a contact-like scale, **applied identically to both** so that the two insulation values are commensurable:
-
-$$\tilde{C} = g(\hat{C}), \qquad \tilde{C}^{\text{obs}} = g(C^{\text{target}}), \qquad g(x) = \exp\!\big(2\tanh(x/2)\big)$$
-
-g is a soft-clipped exponential: it is close to exp near zero, maps both maps back towards the observed/expected scale, and is bounded to [e⁻², e²], the range implied by the target's clip.
-
-For each bin i, insulation averages contacts that **cross** i — the upstream flank against the downstream flank, excluding the diagonal and the benchmark's excluded near-diagonal band (d_min = 2 bins):
-
-$$\hat{I}_i = \frac{1}{|\Omega_i|}\sum_{(a,b)\in\Omega_i} \tilde{C}_{ab}, \qquad \Omega_i = \{(a,b) : i-w \le a < i < b \le i+w,\ b-a \ge d_{\min},\ a,b \text{ unmasked}\}$$
-
-with I_i^obs the same operator on C̃^obs, and ℒ_ins the mean of (Î_i − I_i^obs)² over valid bins and windows. Default w = 20 bins (40 kb), with sensitivity reported at w ∈ {10, 20, 40}; insulation is defined for i ∈ [w, 448−w). ℒ_bnd acts on boundary scores derived from Î `[exact form to be specified]`. ℒ_loop uses called loops as positives against distance-matched negatives, with supervision labels drawn only from training regions. The insulation operator follows the crossing-window idea of the insulation score (Crane et al. 2015).
-
-Because g is a smooth function of Ĉ and the operator is linear in C̃, the structural gradient flows into the map. No auxiliary energy head is used: in a log-ratio target space an "energy" is a relabelling of the map and adds no information.
-
-### 4.2 Optimization
-
-AdamW (weight decay 10⁻²), learning rate 3×10⁻⁴ with 1,000-step warmup and cosine decay; bf16 mixed precision, chosen for kernel compatibility and practical stability rather than on any theoretical stability claim; EMA weights; gradient checkpointing. Batch size is set by memory profiling at 1, 2 and 4, with gradient accumulation to an effective 8–16 windows. Checkpoints are selected on mean validation SCC. Training uses the DNALongBench training split only; no validation or test region enters training or pretraining at any stage.
-
-The structural terms are introduced after ℒ_contact has converged. The no-structure control receives **the same total number of optimizer steps**, so that the comparison isolates the constraint rather than additional training.
-
-The paper configuration, sized for a 24–40 GB accelerator, is fixed before training, and all baselines are matched to it. A reduced configuration that fits 8 GB is used for development only and is never reported.
-
-### 4.3 Metrics
-
-The primary metric is **SCC, the stratum-adjusted correlation coefficient** of HiCRep (Yang et al. 2017): a Pearson correlation computed within each genomic-distance stratum and aggregated with stratum weights, which removes the inflation that distance decay produces in a naive whole-map correlation. SCC is computed per window with the same implementation and parameters as the benchmark. PCC is always reported alongside it. Spearman correlation, where reported, is named as such and never abbreviated to SCC.
-
-Secondary: MSE and MAE; SCC within distance strata 10–100 kb, 100–500 kb and 0.5–0.92 Mb (the maximum separation inside a 448-bin window is 447 × 2,048 bp ≈ 915 kb); insulation correlation, boundary F1 and AUROC, and the directionality index; loop average precision, AUROC, and precision/recall within a 1–2 bin radius; and, for the long-context phase only, inference time, peak memory and parameter count.
-
-### 4.4 Baselines
-
-| Baseline | Definition | Role |
-|---|---|---|
-| Global cell-line mean | Mean training map for that cell line | Lower bound; the minimum bar of the stopping rule (§4.8) |
-| Locus-shared mean | Mean observed map of the **other** cell lines at the same locus | Oracle-style reference: how much of a map is cell-type-shared |
-| Locus-shared mean + cell offset | Above, plus a learned per-cell-line offset | Oracle-style reference |
-| Akita | Reproduced on the official split | Primary comparison |
-| Caduceus-Ph/PS | With a contact head, as in the benchmark | Architectural comparison |
-| Matched Transformer | Attention over bins; same parameter count, data and schedule | Isolates the state-space encoder |
-| Strong CNN | Large-receptive-field convolutional model | Task-specific comparison |
-| HyenaDNA; DeepC; ChiMamba | Included subject to pipeline compatibility or full retraining in our format | Optional |
-
-The two locus-shared references consume **measured** maps from the evaluation regions of other cell lines. They are reported separately as context for how cell-specific the maps are. They are excluded from the comparison set ℬ used for the primary test, which contains only sequence-based trained models, and they are never a stopping condition; otherwise a sequence model would be tested against measurements rather than against a predictor. The global cell-line mean is not in ℬ either.
-
-Baselines we retrain receive the same tuning budget, EMA and checkpoint-selection procedure as our model, and the budget is reported.
-
-### 4.5 Statistical plan
-
-Pre-specified, one-sided, and fixed before results are seen:
-
-1. Compute SCC per test window for each model and each of 3 seeds.
-2. Average over seeds per model and window; then average within non-overlapping 1 Mb genomic blocks. Blocks, not windows, are the unit of resampling, because neighbouring windows overlap and are not independent.
-3. Per block b, take the difference against the strongest baseline **in that block**: Δ_b = SCC_ours,b − max_{m ∈ ℬ} SCC_m,b. Taking the per-block maximum prevents post-hoc baseline selection.
-4. Paired block bootstrap, 10,000 resamples, over blocks.
-5. Test H₀: Δ ≤ 0 against H₁: Δ > 0 at **one-sided α = 0.025**, the level equivalent to a two-sided test at 0.05.
-6. Report mean ΔSCC, the 95% percentile bootstrap interval (its lower limit is the 97.5% one-sided confidence bound), the one-sided p-value, and per-seed values in the appendix.
-
-The same procedure and level apply to every other pre-specified comparison (H2, H3, the multi-scale-mixer ablation and the global-mean check of §4.8). H2's conditions must hold jointly, so they need no multiplicity correction. For H3, the three limited-data regimes within each held-out line are Holm-corrected.
-
-A per-window Wilcoxon test is reported only as a secondary, anti-conservative check, never as the primary test.
-
-### 4.6 Hypotheses and success criteria
-
-| ID | Hypothesis | Criterion |
-|---|---|---|
-| H1 | HiFold-Mamba exceeds the strongest trained baseline in contact-map accuracy | Mean block-wise ΔSCC ≥ +0.01 with a positive one-sided bound under §4.5 |
-| H2 | The insulation constraint improves recovery of TADs and loops | ≥ +0.02 AUROC on **independent** boundaries and ≥ +0.02 loop AP, both with bootstrap bounds excluding 0, and no meaningful accuracy loss (lower bound of ΔSCC > −0.005) under equal compute |
-| H3 | Pretraining on the five training lines plus few-shot adaptation beats training from scratch on the same limited data | Δ_H3 = SCC_pretrain+few-shot − SCC_scratch with a positive one-sided bound in at least one limited regime (Holm-corrected over the three), in at least two of the four held-out lines, under equal compute and identical fine-tuning data |
-| H4 | The model tracks the direction of structural-variant effects on domains and loops | Agreement in sign, and correlation in magnitude, of predicted versus observed changes — **only** where observed before/after maps exist |
-
-**Avoiding circularity in H2.** Training supervises insulation, so boundaries derived from insulation cannot serve as the main evidence; they are reported as internal consistency only. Primary H2 evidence uses boundaries called, with a caller and parameters fixed in advance, from an independent Hi-C or Micro-C dataset of the same cell line (a different study or biological replicate from the one behind the benchmark target). CTCF ChIP-seq peaks containing a CTCF motif form a secondary, assay-orthogonal set. Loop evaluation likewise uses loops from an independent dataset; loop calls derived from the training data are excluded. All accessions are fixed before evaluation.
-
-**H3 design.** The four benchmark lines never used in training (HAP1, HeLa, HepG2, K562) serve as held-out lines. The main five-line model is fine-tuned on limited data from one held-out line at a time, learning a new FiLM embedding, and is evaluated on that line's **official test regions**, which no training stage saw. The scratch arm trains the same architecture from random initialization on the same data for the same number of steps. Chromosome-held-out evaluation is not used here, because those chromosomes are partly inside the official training split. Limited-data regimes are contiguous-block subsets of the withheld line's training regions (10%, 25%, 50%), with its full training regions reported alongside. A read-depth-limited regime would require reprocessing from read pairs and is deferred to a later phase. All four held-out lines are tested, and success requires at least two, so that no conclusion rests on a single line.
-
-**H4 scope.** H4 is tested only on structural variants with published before/after contact maps. If fewer than ten such cases are assembled, the hypothesis is restricted to an in-silico analysis, labelled as such, whose claim is that the model reproduces structural consequences consistent with patterns learned from Hi-C — not that it predicts a measured biological effect. If no experimental cases exist, variant analysis moves to the Discussion as a qualitative demonstration.
-
-### 4.7 Ablations
-
-Matched Transformer in place of the state-space encoder; RC equivariance removed; structural loss removed under equal compute, and each term removed individually; multi-scale mixer removed; insulation window w ∈ {10, 20, 40}; and optionally the distance bias removed, and a symmetric RC-equivariant 2D refinement added after the pairwise head.
-
-### 4.8 Pre-specified stopping rules
-
-| Condition | Consequence |
-|---|---|
-| Accuracy below the convolutional and state-space baselines after a bounded development period | Diagnose data, target transform and splits before touching the architecture; if unresolved, re-scope the claim to whichever narrative of §8 can still hold |
-| Structural loss yields no significant structural gain (H2 not met) | Remove every structure-constrained claim, including from the title |
-| Model fails to beat the global cell-line mean (§4.5 procedure against that baseline alone) | The approach has not demonstrated locus-specific learning and the project fails in its current form. The locus-shared references are context only and are not part of this rule |
-| Fewer than ten experimentally resolved variants | H4 restricted per §4.6 |
-| None of the three narratives of §8 meets its criterion | The project is stopped and redesigned; see §8 |
-
----
-
-## 5. Results
-
-**Not yet run.** Each table is filled only from logged runs, with the config hash, commit id, seeds and date recorded alongside. Cells remain `[TBD]` until then. Negative and null outcomes are reported with the same prominence as positive ones.
-
-### 5.1 Primary comparison (official split)
-
-| Model | SCC (mean ± SD, 3 seeds) | PCC | ΔSCC vs. per-block best | 97.5% one-sided bound | p |
-|---|---|---|---|---|---|
-| Global cell-line mean *(reference, excluded from ℬ)* | [TBD] | [TBD] | — | — | — |
-| Locus-shared mean *(reference, excluded from ℬ)* | [TBD] | [TBD] | — | — | — |
-| Locus-shared mean + cell offset *(reference)* | [TBD] | [TBD] | — | — | — |
-| Strong CNN | [TBD] | [TBD] | — | — | — |
-| Akita (reproduced) | [TBD] | [TBD] | — | — | — |
-| Caduceus-Ph/PS | [TBD] | [TBD] | — | — | — |
-| Matched Transformer | [TBD] | [TBD] | — | — | — |
-| **HiFold-Mamba** | [TBD] | [TBD] | [TBD] | [TBD] | [TBD] |
-
-Reproduction check: our reproduced Akita and Caduceus scores against their published benchmark values — `[TBD]`.
-
-### 5.2 Distance-stratified accuracy
-
-| Model | 10–100 kb | 100–500 kb | 0.5–≈0.9 Mb |
+| Reference (not in $\mathcal{B}$) | SCC, HiCRep weights | SCC, benchmark code | PCC |
 |---|---|---|---|
-| *(all rows)* | [TBD] | [TBD] | [TBD] |
+| Global cell-line mean | 0.014 | 0.009 | 0.089 |
+| Locus-shared mean (other four lines' measured maps) | 0.531 | 0.227 | 0.582 |
+| *Akita, published [@cheng2025]* | — | *0.230* | — |
 
-### 5.3 Structural recovery and the insulation constraint (H2)
+Three findings shape the design (Fig. 2):
 
-| Model | Independent boundary AUROC | Boundary F1 | Insulation r | Loop AP | SCC (non-inferiority) |
-|---|---|---|---|---|---|
-| Base (no structural loss, equal steps) | [TBD] | [TBD] | [TBD] | [TBD] | [TBD] |
-| **+ insulation constraint** | [TBD] | [TBD] | [TBD] | [TBD] | [TBD] |
+1. **The global mean is uninformative in this target space.** After O/E normalization, a line's average map is nearly flat within every distance stratum, so its SCC is ≈ 0. "Beating the global mean" is therefore only a sanity floor, not a meaningful bar.
+2. **A non-learned, locus-only reference matches published Akita on the benchmark metric.** Per line: HFF 0.248 vs. 0.258, H1 0.223 vs. 0.247, GM12878 0.216 vs. 0.227, IMR-90 0.240 vs. 0.210, HCT116 0.207 vs. 0.210 (Fig. 2a). Much of the measurable signal is shared across cell types at a locus. The reference uses measured maps, so it is not a competitor. But it shows that benchmark-level accuracy alone does not establish cell-type-specific prediction, which is why H3 and the per-line analyses are part of the design.
+3. **The two SCC weightings disagree moderately** (Spearman ρ = 0.54 across 2,065 window–line pairs; Fig. 2b). The benchmark implementation weights long-distance strata about uniformly, while HiCRep weights by stratum size and variance. Model rankings can therefore depend on the variant. We pre-register HiCRep as primary and report both.
 
-Insulation-derived boundaries (internal consistency only): `[TBD]`. Window sensitivity w ∈ {10, 20, 40}: `[TBD]`.
+![**Fig. 1 | HiFold-Mamba and the structural objective.** Left: architecture (every component RC-equivariant) and the training objective. Right: a validation target map (HFF) and the boundary-strength profile s_i computed from it with the operator used in the loss and in evaluation.](figures/fig1_schematic.pdf){width=100%}
 
-### 5.4 Ablations
+![**Fig. 2 | Pilot data on the test set (no trained model).** **a**, Per-line SCC (benchmark implementation) of the locus-shared reference (measured maps of the other four lines) against published Akita [@cheng2025] and the global cell-line mean. **b**, Per-window agreement of the two SCC weightings for the locus-shared reference. **c**, Simulated probability that the pre-registered H1 rule succeeds, as a function of the true block-wise ΔSCC, for four paired-model correlations; dashed: 0.9; dotted: the 0.01 margin.](figures/fig2_pilot.pdf){width=100%}
 
-| Variant | SCC | Δ vs. full | Independent boundary AUROC | Loop AP |
-|---|---|---|---|---|
-| Full model | [TBD] | — | [TBD] | [TBD] |
-| Transformer encoder (matched) | [TBD] | [TBD] | [TBD] | [TBD] |
-| − RC equivariance | [TBD] | [TBD] | [TBD] | [TBD] |
-| − structural loss (equal steps) | [TBD] | [TBD] | [TBD] | [TBD] |
-| − multi-scale mixer | [TBD] | [TBD] | [TBD] | [TBD] |
-| − distance bias | [TBD] | [TBD] | [TBD] | [TBD] |
+# 4. Timeline and compute
 
-Equivariance unit test: `[pass/fail, per §3.6]`.
+On the authors' RTX 5050 (8 GB), the confirmatory programme needs about:
 
-### 5.5 Few-shot cell-type adaptation (H3)
+| Item | Runs × time per run | GPU hours |
+|---|---|---|
+| HiFold Base and Struct, 3 seeds each | 6 × 26 h | 157 |
+| $\mathcal{B}$: Akita, matched Transformer, matched CNN, 3 seeds each | 3 × (4.9 + 9.7 + 9.2) h | 71 |
+| λ pilot (9 settings, validation, Struct phase only) | 9 × 6.5 h | 59 |
+| Ablations − RC, − mixer, 3 seeds each | 6 × 26 h | 157 |
+| H3: 4 lines × 4 regimes × 2 arms × 3 seeds | 96 × ≈ 1 h | ≈ 100 |
+| Window sensitivity, robustness split (1 seed) | — | ≈ 100 |
+| **Total** | | **≈ 640** |
 
-| Held-out line | Regime | Scratch SCC | Pretrain + few-shot SCC | Δ_H3 |
-|---|---|---|---|---|
-| [line 1] | 10% / 25% / 50% / full | [TBD] | [TBD] | [TBD] |
-| [line 2] | 10% / 25% / 50% / full | [TBD] | [TBD] | [TBD] |
+That is about four weeks of continuous single-GPU time. The Akita reproduction (training and validation only) has started. Stage 2 submission is planned within six months of in-principle acceptance.
 
-### 5.6 Structural variants (H4)
+# 5. Limitations (stated before outcomes)
 
-Assembled cases with before/after maps: `[count TBD]`. Scope decision per §4.6: `[TBD]`.
+1. **Scale.** About 1 Mb windows; megabase-scale only. Orca and AlphaGenome cover longer contexts.
+2. **Sequence only.** Without cell-type-specific inputs, prediction for an unseen line needs adaptation data (H3). Zero-shot transfer would require epigenomic inputs.
+3. **Annotation independence is partial.** The independent boundaries come from an insulation-family caller, and for HFF from the same laboratory as the training target. Some boundary sets are shallow dilution Hi-C at 10 kb. HFF has no independent loop set.
+4. **Held-out lines are unsmoothed**, so their absolute SCC is not comparable with the training lines.
+5. **Sensitivity.** H1 is under-powered at exactly the 0.01 margin (Section 2.10).
+6. **Benchmark split.** Random virtual contigs. The chromosome-held-out analysis is secondary.
+7. **Encoder precedent.** RC-equivariant bidirectional Mamba follows Caduceus; the structural constraint itself adapts VEHiCLE's insulation loss to a new setting.
 
-| Case | Variant | ΔSCC | Δinsulation | Δloop score | Sign agreement |
-|---|---|---|---|---|---|
-| [TBD] | [TBD] | [TBD] | [TBD] | [TBD] | [TBD] |
+# Statements
 
-### 5.7 Robustness: chromosome-held-out split
+**Data availability.** All data are public: DNALongBench (doi:10.7910/DVN/AZM25S, CC0); 4DN boundary files and ENCODE ChIA-PET files with the accessions in Section 2.8. Checksums and access dates are in `docs/data_manifest.md`.
 
-Reported separately; never pooled with §5.1. `[TBD]`
+**Code availability.** <https://github.com/malekpouri/HiFold-Mamba>: model, baselines, training, evaluation, statistics, tests and configurations. Licence and copyright holder to be confirmed by the authors.
 
-### 5.8 Efficiency
+**Author contributions (CRediT).** To be confirmed by both authors before submission.
 
-Reported for the long-context and high-resolution phases only. At 512 bins no efficiency advantage is claimed, and none is reported as if it were a finding. `[TBD]`
+**Competing interests.** None declared *(to be confirmed by the authors)*.
 
----
+**Funding.** *(to be completed by the authors)*.
 
-## 6. Discussion
+**Use of AI tools.** Claude (Anthropic) assisted with drafting the protocol and manuscript, writing and testing code, and checking references. The authors take responsibility for all content and have verified every claim, citation and number against its source. *(Authors to confirm.)*
 
-`[TBD — written after §5.]`
+# References
 
-Points to address once results exist: whether structural constraint rather than encoder choice accounts for any gain; how far the locus-shared references bound what sequence-only prediction can add; what the distance-stratified profile implies about genuine long-range dependence; and limitations.
-
----
-
-## 7. Limitations
-
-Stated now, independently of outcome.
-
-1. **Scale.** The window is ≈1 Mb. The work is megabase-scale; "multi-megabase" is not claimed, and Orca already operates at larger scales.
-2. **No efficiency claim at this resolution.** With 512 bins, attention over bins is inexpensive; any efficiency argument requires the longer-context or finer-token phase and is deferred to it.
-3. **Sequence-only.** Without cell-type-specific inputs the model cannot predict an unseen cell line zero-shot; H3 is explicitly few-shot. Zero-shot generalization needs epigenomic inputs and is future work.
-4. **Architectural precedent.** The RC-equivariant bidirectional state-space design follows Caduceus; the novelty claimed here is the structural constraint, multi-scale mixing, adaptation scheme and analysis protocol, not the encoder family.
-5. **Structural ground truth.** Boundary and loop annotations derive from Hi-C data related to the training targets; independent sources mitigate but do not eliminate this.
-6. **Variant evidence.** Experimentally resolved variants with before/after maps are scarce, so H4 may remain in-silico and qualified.
-7. **Nine cell lines in total** (five for training, four held out) bound how strongly cross-cell-type conclusions can be drawn.
-8. **Assay and processing heterogeneity.** The training lines span Hi-C and Micro-C protocols, and the held-out lines were added to the benchmark by its authors, not by Akita's original processing. The benchmark's processing is inherited as-is, and protocol effects are not separately modelled in this phase.
-
----
-
-## 8. Conditional title and claim scope
-
-The title is contingent on outcomes, fixed in advance to prevent retrofitting. Three narratives each have a pre-specified criterion:
-
-- **N-I, insulation-constrained:** H2 met.
-- **N-M, multi-scale:** H1 met **and** removing the multi-scale mixer significantly lowers SCC (§4.5 procedure, full model vs. no-mixer ablation).
-- **N-F, few-shot adaptation:** H3 met.
-
-| Narratives met | Title |
-|---|---|
-| N-I and N-M | *Insulation-Constrained Multi-Scale State-Space Modeling for Megabase-Scale Prediction of 3D Chromatin Folding* (working title) |
-| N-I only | *Insulation-Constrained Sequence-to-Contact-Map Prediction at Megabase Scale* |
-| N-M only | *Multi-Scale State-Space Modeling of Chromatin Contact Maps from DNA Sequence* |
-| N-F only | *Few-Shot Cell-Type Adaptation for Sequence-Based Prediction of 3D Chromatin Folding* |
-
-If N-F holds together with N-I or N-M, the title follows N-I/N-M and the adaptation result is reported as secondary. If none of the three holds, the project is stopped and redesigned rather than reframed as a benchmark, tooling or negative-result paper.
-
-No variant of the title asserts a physical or energy-based model, since no energy head is used. No variant rests on bidirectionality with RC equivariance alone, since that is Caduceus's contribution.
-
----
-
-## 9. Statements
-
-**Data availability.** All primary data are public: the DNALongBench contact-map task; for structural evaluation, Hi-C and Micro-C from 4D Nucleome and related studies and ENCODE CTCF ChIP-seq and ATAC-seq. Accessions, assay, depth, build, licence and access date will be recorded in the repository data manifest (`docs/data_manifest.md`) as each dataset is obtained. No individual-level human genotype data are used; the work uses reference sequence and cell-line data only.
-
-**Code availability.** https://github.com/malekpouri/HiFold-Mamba — currently holds the pre-specified protocol. Model, training and evaluation code, configurations and the equivariance test will be added there; no code has been written yet.
-
-**Reproducibility.** Every reported number is reproducible from a committed configuration and a recorded commit; three seeds per model; seeds, hardware and software versions logged.
-
-**CRediT.** `[To be agreed with all authors before submission.]` Mohammad Malekpouri: conceptualization, methodology, software, formal analysis, investigation, writing — original draft, visualization. Somayeh Lotfi: supervision, methodology, validation, writing — review & editing.
-
-**Competing interests.** `[TBD]`
-
-**Funding.** `[TBD]`
-
-**Use of AI tools.** AI assistance (Claude, Anthropic) has been used for protocol drafting and manuscript preparation, and will be used for code development. The authors are responsible for all content, and every claim, citation and number will be verified by the authors against its primary source before submission. The target journal's disclosure requirements will be followed. `[Revise to past tense, and describe the actual uses, at submission.]`
-
----
-
-## 10. Outstanding items before submission
-
-1. **Target transform** — confirm in the released files the transform, range, masks and diagonal offset documented in §2.2. Until then, g in §4.1 is provisional.
-2. **ChiMamba** — read the published chapter; tabulate task, inputs, output, resolution and split; confirm related work versus baseline.
-3. **Verify** the remaining prior-art details (DeepC, Orca, C.Origami encoder/window entries), the SCC parameters used by the benchmark, DNALongBench's per-cell-line published values, and the final *Nat Commun* version against the preprint values quoted in §1.
-4. **Independent boundary and loop sources** — select accessions per §4.6 and record them before evaluation.
-5. **Specify** the convolutional downsampling stack, the boundary-loss form, the RC pairing of pairwise-head and FiLM channels, and all hyperparameters.
-6. **Compute environment** for the paper configuration.
-7. **Confirm** authorship, order and CRediT with all authors.
-8. **Target journal** — select after results; format accordingly.
-
----
-
-## References
-
-Verified against the publisher, PubMed/PMC, arXiv or Crossref on 2026-10-21.
-
-- Avsec Ž, Latysheva N, Cheng J, et al. Advancing regulatory variant effect prediction with AlphaGenome. *Nature* 649, 1206–1218 (2026). doi:10.1038/s41586-025-10014-0
-- Cheng W, Song Z, Zhang Y, Wang S, Wang D, Yang M, Li L, Ma J. DNALONGBENCH: a benchmark suite for long-range DNA prediction tasks. *Nat Commun* 16 (2025). doi:10.1038/s41467-025-65077-4. Preprint: bioRxiv doi:10.1101/2025.01.06.631595 `[article number to add]`
-- Crane E, Bian Q, McCord RP, et al. Condensin-driven remodelling of X chromosome topology during dosage compensation. *Nature* 523, 240–244 (2015). doi:10.1038/nature14450
-- Fudenberg G, Kelley DR, Pollard KS. Predicting 3D genome folding from DNA sequence with Akita. *Nat Methods* 17, 1111–1117 (2020). doi:10.1038/s41592-020-0958-x
-- Gu A, Dao T. Mamba: linear-time sequence modeling with selective state spaces. arXiv:2312.00752 (2023).
-- Krietenstein N, Abraham S, Venev SV, et al. Ultrastructural details of mammalian chromosome architecture. *Mol Cell* 78, 554–565.e7 (2020). doi:10.1016/j.molcel.2020.03.003
-- Nguyen E, Poli M, Faizi M, et al. HyenaDNA: long-range genomic sequence modeling at single nucleotide resolution. *NeurIPS* (2023). arXiv:2306.15794
-- Perez E, Strub F, de Vries H, Dumoulin V, Courville A. FiLM: visual reasoning with a general conditioning layer. *AAAI* (2018). arXiv:1709.07871
-- Rao SSP, Huntley MH, Durand NC, et al. A 3D map of the human genome at kilobase resolution reveals principles of chromatin looping. *Cell* 159, 1665–1680 (2014). doi:10.1016/j.cell.2014.11.021
-- Rao SSP, Huang S-C, Glenn St Hilaire B, et al. Cohesin loss eliminates all loop domains. *Cell* 171, 305–320.e24 (2017). doi:10.1016/j.cell.2017.09.026
-- Schiff Y, Kao C-H, Gokaslan A, Dao T, Gu A, Kuleshov V. Caduceus: bi-directional equivariant long-range DNA sequence modeling. *Proc ICML*, PMLR 235, 43632–43648 (2024). PMID 40567809
-- Schwessinger R, Gosden M, Downes D, et al. DeepC: predicting 3D genome folding using megabase-scale transfer learning. *Nat Methods* 17, 1118–1124 (2020). doi:10.1038/s41592-020-0960-3
-- Tan J, Shenker-Tauris N, Rodriguez-Hernaez J, et al. Cell-type-specific prediction of 3D chromatin organization enables high-throughput in silico genetic screening. *Nat Biotechnol* 41, 1140–1150 (2023). doi:10.1038/s41587-022-01612-8
-- Yang T, Zhang F, Yardımcı GG, et al. HiCRep: assessing the reproducibility of Hi-C data using a stratum-adjusted correlation coefficient. *Genome Res* 27, 1939–1949 (2017). doi:10.1101/gr.220640.117
-- Zhang J, Song C, Cui T, Li C, Ma J. ChiMamba: predicting chromatin interactions based on Mamba. In: *Advanced Intelligent Computing in Bioinformatics* (ICIC 2024), LNCS 14882, 50–61. Springer (2024). doi:10.1007/978-981-97-5692-6_5
-- Zhou J. Sequence-based modeling of three-dimensional genome architecture from kilobase to chromosome scale. *Nat Genet* 54, 725–734 (2022). doi:10.1038/s41588-022-01065-4
+::: {#refs}
+:::
