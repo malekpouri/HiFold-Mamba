@@ -187,7 +187,7 @@ $\mathcal{L}_{\text{ins}}$ would therefore force the map towards a systematicall
 - With $g = \operatorname{softplus}$: a smooth approximation, but then on both sides.
 
 Recommendation: $g = \exp$ if the target is natural-log O/E (else use the matching base), with a clamp on $\hat{C}$ for numerical safety. Additional notes:
-- With $w = 20$, insulation is defined only for bins $i \in [20, 428)$ of the 448-bin output.
+- With $w = 40$ (changed from 20 on 2026-10-23 after the validation positive control, manuscript §3.4), insulation is defined only for bins $i \in [40, 408)$ of the 448-bin output.
 - Masked bins are excluded from the sum, and the $1/w^2$ normalization becomes "divide by the number of valid pairs".
 - Pairs inside the benchmark's excluded near-diagonal band ($b - a < d_{\min}$) are also excluded, with $d_{\min}$ taken from the DNALongBench files/code when G1 is documented.
 

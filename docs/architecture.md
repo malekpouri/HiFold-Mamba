@@ -86,7 +86,7 @@ Only for 4–8 Mb inputs (2,048–4,096 bins) or 128 bp tokens (~8,192 per 1 Mb)
 - Without RC equivariance.
 - Without $\mathcal{L}_{\text{struct}}$ (same compute), and each term on its own (ins / bnd / loop).
 - Without the multi-scale mixer.
-- Insulation window $w$ = 10 / 20 / 40.
+- Insulation window $w$ = 20 / 40 / 80 (default 40 since 2026-10-23, fixed on validation data; manuscript §3.4).
 - Optional: without the distance bias; biaffine only vs. + a small symmetric, RC-equivariant 2D refinement.
 
 ## 6. Still to specify (before coding)

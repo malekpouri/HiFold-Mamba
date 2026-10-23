@@ -188,12 +188,12 @@ def train(cfg: dict):
                 tm = None
                 if lam.get("ins", 0) > 0:
                     tm = from_triu(tv, mcfg.out_bins, iu)
-                    li = insulation_loss(pred, tm, lam.get("w", 20))
+                    li = insulation_loss(pred, tm, lam.get("w", 40))
                     loss = loss + lam["ins"] * li
                     parts["ins"] = li.item()
                 if lam.get("bnd", 0) > 0:
                     tm = from_triu(tv, mcfg.out_bins, iu) if tm is None else tm
-                    lb = boundary_loss(pred, tm, lam.get("w", 20), lam.get("bnd_window", 5))
+                    lb = boundary_loss(pred, tm, lam.get("w", 40), lam.get("bnd_window", 5))
                     loss = loss + lam["bnd"] * lb
                     parts["bnd"] = lb.item()
             (loss / accum).backward()

@@ -11,7 +11,7 @@ struct:
   start_step: 52560
   ins: 0.3
   bnd: 0.3
-  w: 20
+  w: 40                    # fixed on validation (manuscript §3.4)
   bnd_window: 5
 data:
   root: /mnt/storage/datasets/Human genomes Dataset/new_idea/datasets/dnalongbench/cache/akita5

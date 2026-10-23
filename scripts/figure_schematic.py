@@ -34,7 +34,7 @@ def main(cache, out):
     ds = ContactCache(cache, "valid")
     i = 7
     t = triu_to_matrix(np.asarray(ds.tgt[i][:, 0], np.float64))
-    ins = insulation(torch.as_tensor(t)[None], 20)[0]
+    ins = insulation(torch.as_tensor(t)[None], 40)[0]
     bs = boundary_strength_t(ins, 5).numpy()
 
     fig = plt.figure(figsize=(7.4, 3.6))
