@@ -29,7 +29,7 @@ Tests use a paired bootstrap over 237 one-megabase test blocks (one-sided α = 0
 - **Verification.** The benchmark target, the window coordinates and the network's equivariance were verified.
 - **Locus-shared reference.** Copying other cell lines' measured maps at the same locus matches published Akita on the benchmark's SCC (0.227 vs. 0.230).
 - **SCC weightings.** Two weightings in common use weight distance strata in opposite directions and agree only moderately (ρ = 0.54).
-- **Comparison rule.** In simulations calibrated on the pilot data, a per-block-best comparison against several baselines has no power. We therefore test against each baseline, which gives ≥ 90 % power at a true gain of 0.02.
+- **Comparison rule.** In simulations calibrated on the pilot data, a per-block-best comparison against several baselines has no power. We therefore test against each baseline, which gives ≥ 90 % power at a true gain of 0.02 when between-model correlation is ≥ 0.95.
 - **H2 positive control.** On validation windows, observed maps recover the independent boundaries (AUROC 0.61–0.91) and loops (0.86–0.90). This fixed the insulation window and showed that these annotations are largely shared across cell types.
 
 **Keywords:** 3D genome; Hi-C; Micro-C; insulation; TAD boundaries; chromatin loops; state-space models; reverse-complement equivariance; registered report.
@@ -213,7 +213,7 @@ The test set is fixed by the benchmark (413 windows in 237 blocks), so the quest
 
 The false-positive rate stays at or below α. Because H1 requires the **point estimate** to reach +0.01, power at a true effect of exactly 0.01 cannot exceed about 0.5.
 
-**Three baselines.** We first simulated the rule originally planned, Δ_b = S_ours,b − max_m S_m,b, with three baselines that are each worse than ours by the true Δ. Its power was **0.00 for every Δ ≤ 0.02 and every ρ**, and 0.08 at Δ = 0.03 (ρ = 0.98) (`results/pilot/power_h1_max3.tsv`). Most blocks hold one or two windows. The maximum of three noisy block means therefore exceeds their common mean by about 0.85 σ(1 − ρ)^½, i.e. 0.02–0.04 SCC, which is larger than any realistic gain. We replaced it with the intersection–union rule. Its worst-case power, with three equally strong baselines, is:
+**Three baselines.** We first simulated the rule originally planned, Δ_b = S_ours,b − max_m S_m,b, with three baselines that are each worse than ours by the true Δ. Its power was **0.00 for every Δ ≤ 0.02 and every ρ**, and 0.08 at Δ = 0.03 (ρ = 0.98) (`results/pilot/power_h1_max3.tsv`). Most blocks hold one or two windows. The maximum of three noisy block means therefore exceeds their common mean by about 0.85 σ(1 − ρ)^½, i.e. 0.02–0.07 SCC across the simulated ρ, which is larger than any realistic gain. We replaced it with the intersection–union rule. Its worst-case power, with three equally strong baselines, is:
 
 | True Δ (vs. each) | ρ = 0.8 | ρ = 0.9 | ρ = 0.95 | ρ = 0.98 |
 |---|---|---|---|---|
