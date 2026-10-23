@@ -9,10 +9,10 @@ Last update: 2026-10-23 (afternoon). Details in `notes/` (latest: `2026-10-23_g1
 | 1 Environment | Done. torch 2.14.1+cu130, compiled pure-PyTorch scan. Paper model fits 8 GB: 1.34 s/step, 3.8 GiB |
 | 2 Data & target | **G1 closed** (natural-log O/E, clip ±2, smoothed after the clip). Test cache built and hg38-verified. Download of the 5 training lines running; train/valid cache builds automatically when it finishes. The 4 H3 lines download next |
 | 3 Evaluation code | Done. Vectorised SCC (both variants), PCC, block bootstrap, insulation, AUROC/AP, `scripts/evaluate.py` |
-| 4 Baselines | Akita ported (746k params). Matched Transformer and matched CNN (parameter-matched, RC-equivariant). Locus-shared reference computed on test; global mean ready |
+| 4 Baselines | Akita ported (746k params). Matched Transformer and matched CNN (parameter-matched, RC-equivariant). Test references: locus-shared SCC_hicrep 0.531; global mean 0.014 (near zero in O/E space, see notes) |
 | 5 Model | Done. Equivariance test passes, including the negative control |
 | 6 Structure losses | Insulation and boundary losses done. Loop loss needs the G8 data. Stage-2 weights not yet set |
-| 7 Runs | Next: Akita reproduction (`configs/akita_repro.yaml`, ~5 h locally) as soon as the cache is ready |
+| 7 Runs | Train/valid caches built (7,008 / 419, hg38-verified, no all-zero maps). Akita reproduction queued: starts automatically when the CRISPR job frees the GPU (`runs_akita.log`) |
 
 Tests: **53/53 pass** (`CUDA_VISIBLE_DEVICES="" .venv/bin/python -m pytest -q tests`).
 

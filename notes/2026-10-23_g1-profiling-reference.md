@@ -84,3 +84,18 @@ Observations (not claims):
 | Akita | 0.12 per window | 4.73 GiB at batch 2 | 0.25 h |
 
 HiFold remains about 11x slower per window than Akita. This is a cost, not a result, and it is consistent with the protocol's rule of no efficiency claim at 512 bins.
+
+## Global cell-line mean on test (2026-10-23)
+
+`scripts/evaluate.py global_mean` (mean of that line's 7,008 training maps, the same prediction for every window), 413 test windows × 5 lines, `results/reference/global_mean_test.tsv`:
+
+| Line | SCC_hicrep | SCC_benchmark | PCC |
+|---|---|---|---|
+| GM12878 | 0.011 | 0.008 | 0.094 |
+| H1hESC | 0.020 | 0.004 | 0.092 |
+| HCT116 | 0.009 | −0.001 | 0.067 |
+| HFF | 0.017 | 0.022 | 0.099 |
+| IMR90 | 0.014 | 0.010 | 0.092 |
+| **All** | **0.014** | **0.009** | **0.089** |
+
+Observation: the target is distance-normalized (O/E), so the mean map is almost flat apart from the residual P(s). Within each stratum it is nearly constant, which leaves SCC ≈ 0. **The §7 minimum bar ("beat the global cell-line mean") is therefore almost trivially met in this target space.** It is still a valid sanity floor, but it is not a meaningful stopping criterion. Reported to the user; the protocol is unchanged.
