@@ -47,6 +47,18 @@ def auth(portal):
     return {}
 
 
+class _NoAuthOnRedirect(urllib.request.HTTPRedirectHandler):
+    """4DN redirects to a pre-signed S3 URL, which rejects a second (Authorization) credential."""
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        new = super().redirect_request(req, fp, code, msg, headers, newurl)
+        if new is not None:
+            new.remove_header("Authorization")
+        return new
+
+
+OPENER = urllib.request.build_opener(_NoAuthOnRedirect)
+
+
 def md5(path):
     h = hashlib.md5()
     with open(path, "rb") as fh:
@@ -68,7 +80,7 @@ def main(out):
                 print(f"skip {acc}: 4DN download needs FOURDN_KEY / FOURDN_SECRET", flush=True)
                 continue
             tmp = dest.with_suffix(dest.suffix + ".part")
-            with urllib.request.urlopen(urllib.request.Request(url, headers={"User-Agent": H["User-Agent"], **auth(portal)}), timeout=600) as r, \
+            with OPENER.open(urllib.request.Request(url, headers={"User-Agent": H["User-Agent"], **auth(portal)}), timeout=600) as r, \
                     open(tmp, "wb") as fh:
                 while chunk := r.read(1 << 20):
                     fh.write(chunk)

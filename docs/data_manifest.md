@@ -69,4 +69,14 @@ Approved 2026-10-23 (`notes/2026-10-23_g8-resolved.md`). Downloaded with `script
 
 Licence: ENCODE data, no restrictions on use (ENCODE data-use policy).
 
-**Boundaries: 4DN processed `boundaries` files (GRCh38). Not yet downloaded:** 4DN serves downloads only with an access key (HTTP 403 anonymously). Chosen files: HFF 4DNFI3CGVRKU (set 4DNESNMAAN97), H1hESC 4DNFICEHILOK (4DNESFSCP5L8), GM12878 4DNFIQBWXNL1 (4DNESLLTENG9), IMR90 4DNFIUI2RM2Q (4DNES4296C5Q), HCT116 4DNFIG49IPR6 (4DNESNSTBMBY).
+**Boundaries: 4DN processed `boundaries` files (GRCh38), downloaded 2026-10-23 with a 4DN access key.** 4DN refuses anonymous downloads (HTTP 403). The key file is local only and git-ignored. Format: bed, 5 columns (interval, Strong/Weak, boundary strength), from the 4DN insulation pipeline.
+
+| Line | Set | File | Resolution | Rows | Bytes | MD5 |
+|---|---|---|---|---|---|---|
+| HFF | 4DNESNMAAN97 | 4DNFI3CGVRKU | 5 kb | 10,366 | 171,021 | f84bb7e06f594ab6864f0d506f76bf45 |
+| H1hESC | 4DNESFSCP5L8 | 4DNFICEHILOK | 5 kb | 10,577 | 174,155 | dd33c22f03b976caf538128a28c0701b |
+| GM12878 | 4DNESLLTENG9 | 4DNFIQBWXNL1 | 10 kb | 9,635 | 156,234 | 614216d99ef05ac72539145e765ab2f2 |
+| IMR90 | 4DNES4296C5Q | 4DNFIUI2RM2Q | 10 kb | 9,043 | 147,126 | f3f4d4720bfe17f10a14b5b5d36ed42d |
+| HCT116 | 4DNESNSTBMBY | 4DNFIG49IPR6 | 5 kb | 8,246 | 136,353 | d947aa77b6ace12a8ee615548ad0e831 |
+
+Licence: 4DN data, publicly released (4DN data-use guidelines: cite the producing lab and publication).

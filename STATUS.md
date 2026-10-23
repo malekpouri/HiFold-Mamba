@@ -21,7 +21,7 @@ Tests: **53/53 pass** (`CUDA_VISIBLE_DEVICES="" .venv/bin/python -m pytest -q te
 1. Primary SCC = HiCRep weighting; benchmark-code SCC reported alongside.
 2. H3 lines: unsmoothed targets used unchanged (limitation).
 3. `cell_dist_bias` on (default and all configs).
-4. G8 table approved and resolved (`notes/2026-10-23_g8-resolved.md`). CTCF ChIA-PET loop sets downloaded for 4 lines (none for HFF). The 4DN boundary files need a 4DN access key (`FOURDN_KEY`/`FOURDN_SECRET`, then `python3 -I scripts/download_g8.py "$D/g8"`). Still to pre-register before H2: loop PET threshold, boundary caller.
+4. G8 resolved and downloaded: 4DN boundaries for 5 lines, ENCODE CTCF ChIA-PET loops for 4 (none for HFF). Pre-registered: PET ≥ 10, shipped 4DN boundary calls. Open: bin-matching tolerance for the 5/10 kb calls on 2,048 bp bins.
 5. Strong CNN = parameter-matched dilated-conv mixer.
 6. L_bnd = MSE on boundary-strength profiles (`train.boundary_loss`, config key `struct.bnd`).
 

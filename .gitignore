@@ -47,3 +47,7 @@ Thumbs.db
 # local logs
 download_*.log
 runs_*.log
+
+# credentials
+4dnucleome.txt
+*keypairs*.json
