@@ -32,3 +32,11 @@ Sources:
 - https://www.nature.com/nmeth/articles?type=registered-report
 - https://academic.oup.com/bioinformatics/pages/open-access
 - https://doaj.org/toc/1367-4811
+
+## Update: Nature Methods RR scope checked (2026-10-24)
+
+The official page (https://www.nature.com/nmeth/submission-guidelines/registered-reports) says Registered Reports there are only for "a comprehensive comparison of the performance of established, related methods or tools". It adds: "the Registered Reports format is not suitable for method development papers; such papers should be submitted as Articles or Brief Communications."
+
+HiFold-Mamba is a method-development study, so the current Stage 1 manuscript is **not eligible** as a Nature Methods RR. The remaining Nature Methods routes are:
+- (a) a regular Article after the experiments are run;
+- (b) re-scoping to a benchmark of established sequence-to-contact-map models, which would be a different study.
