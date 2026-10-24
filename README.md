@@ -1,109 +1,160 @@
-# HiFold-Mamba
+<div align="center">
 
-Sequence-based prediction of 3D chromatin folding at megabase scale.
+# 🧬 HiFold-Mamba
 
-*Working title, conditional on pre-specified outcomes (see [Stopping rules](#stopping-rules)): "Insulation-Constrained Multi-Scale State-Space Modeling for Megabase-Scale Prediction of 3D Chromatin Folding".*
+### From one megabase of DNA to a 3D contact map, and a test of whether teaching the model *insulation* makes it fold chromatin better
 
-> **Status: protocol stage — no results yet.** The analysis plan, metrics, baselines, statistical tests and stopping rules in `docs/` were fixed **before** any training, and no model has been trained. The manuscript's Results section is deliberately empty. Nothing here reports a measured outcome.
+[![Stage 1 Registered Report](https://img.shields.io/badge/Registered_Report-Stage_1-6f42c1)](paper/manuscript.pdf)
+[![Tests](https://img.shields.io/badge/tests-64_passing-2ea44f)](tests/)
+[![Python](https://img.shields.io/badge/python-3.12-3776ab?logo=python&logoColor=white)](pyproject.toml)
+[![PyTorch](https://img.shields.io/badge/PyTorch-2.14-ee4c2c?logo=pytorch&logoColor=white)](requirements.lock.txt)
+[![Genome](https://img.shields.io/badge/genome-hg38-0b7285)](docs/data_manifest.md)
+[![License: MIT](https://img.shields.io/badge/license-MIT-yellow)](LICENSE)
 
-## What this project does
+**[📄 Manuscript (PDF)](paper/manuscript.pdf)** · **[🧪 Protocol](docs/evaluation_protocol.md)** · **[🏗️ Architecture](docs/architecture.md)** · **[📒 Lab notes](notes/)**
 
-Predicts Hi-C / Micro-C contact maps from DNA sequence alone: a 1,048,576 bp window in, a 448×448 map at 2,048 bp resolution out, on the DNALongBench contact-map task in hg38.
+</div>
 
-The goal is not only a high overall correlation, but recovery of the structure that matters biologically — TAD boundaries and insulation, CTCF-anchored loops, and the changes structural variants cause.
+<p align="center">
+  <img src="paper/figures/fig1_schematic.png" width="900" alt="HiFold-Mamba architecture, training objective and an example contact map with its boundary-strength profile">
+</p>
 
-## Approach
+---
 
-Replacing a convolutional or attention encoder with a state-space model is not, on its own, a contribution: Caduceus already pairs a bidirectional Mamba with reverse-complement equivariance for DNA. At 512 bins per window, attention is also cheap, so **no efficiency advantage is claimed at this scale**. The contribution is instead:
+## 💡 The idea in 30 seconds
 
-1. **An insulation constraint on the predicted map.** Insulation and boundary scores are computed *from the predicted contact map*, with the same operator applied to the observed map, so the structural gradient reaches the map itself. An auxiliary structure head can be right while the map is wrong; this cannot.
-2. **Network-wide RC equivariance** — `f(RC(x)) = rot180(f(x))` for the whole network, not just the state-space blocks, enforced by a unit test that must pass before training starts.
-3. **Multi-scale state mixing** across shallow, intermediate and deep encoder states, for domain-scale and loop-scale structure together.
-4. **Few-shot cell-type adaptation** via a FiLM cell-type embedding, measured by leave-one-cell-line-out transfer against training from scratch under equal compute.
-5. **A pre-specified analysis plan** with per-block testing against the strongest baseline in each block, oracle-style reference baselines, non-circular structural evaluation, and stopping rules that end the project if none of its pre-specified claims holds.
+Chromosomes fold into **domains** separated by **insulating boundaries**, and are held together by **CTCF loops**. Deep models can predict these Hi-C / Micro-C contact maps from DNA sequence alone. They are trained pixel by pixel, yet judged on the structures biologists actually care about.
 
-## Architecture
+**HiFold-Mamba asks a simple question:** if insulation and boundary strength are computed *directly from the predicted map* and the model is trained to get them right, does it recover real domain boundaries and loops better?
 
-| Module | Role |
+We test this **honestly**:
+- against boundary and loop annotations that the model never saw;
+- with hypotheses, margins and statistics fixed **before** any result exists, as a Stage 1 Registered Report.
+
+| | |
 |---|---|
-| Conv1D encoder | 1,048,576 bp → 512 bins of 2 kb; RC-paired kernels |
-| Bi-Mamba encoder | 8–12 blocks over bins; forward and RC paths share parameters (MambaDNA / Caduceus-PS) |
-| Multi-scale mixer | Pyramidal pooling over shallow/intermediate/deep states |
-| Pairwise head | Symmetric biaffine `sym(UVᵀ/√d + b_|i−j|)`, cropped to 448×448 |
-| Structure terms | Insulation, boundaries and loops derived from the predicted map — no separate heads, no energy head |
-| Cell-type adapter | FiLM from a learned per-cell-line embedding |
+| 🔤 **Input** | 1,048,576 bp of hg38 DNA (one-hot) |
+| 🗺️ **Output** | a 448 × 448 contact map at 2,048 bp resolution (log observed/expected) |
+| 📊 **Benchmark** | [DNALongBench](https://doi.org/10.7910/DVN/AZM25S) contact-map task: 5 training cell lines + 4 held-out lines |
+| 🔁 **Built-in symmetry** | reverse-complement the DNA and you get exactly the map rotated by 180°, by construction and unit-tested |
 
-## Protocol summary
+## 🏗️ How it works
 
-| Item | Choice |
-|---|---|
-| Benchmark | DNALongBench contact-map task, hg38 |
-| Cell lines | Training: HFF, H1-hESC, GM12878, IMR-90, HCT116. Few-shot held-out only: HAP1, HeLa, HepG2, K562 (the benchmark's other four lines) |
-| Split | Official DNALongBench files (region-based); chromosome-held-out as separate robustness. **Never** a window-level random split |
-| Primary metric | **SCC** — stratum-adjusted correlation coefficient (HiCRep). PCC always reported alongside; Spearman, where used, is named in full |
-| Statistics | SCC per window → averaged over 3 seeds → 1 Mb blocks → ΔSCC vs. the per-block best baseline → one-sided paired block bootstrap, 10,000 resamples, α = 0.025 (reported with the 95% percentile CI, whose lower limit is the one-sided bound) |
-| Success | Mean block-wise ΔSCC ≥ +0.01 with a positive 97.5% one-sided bound |
-| Baselines | Akita, Caduceus-Ph/PS, matched Transformer, strong CNN; mean-map references reported separately |
-| Precision | bf16 mixed precision |
-
-Blocks rather than windows are the resampling unit because neighbouring windows overlap and are not independent. The per-block maximum prevents post-hoc baseline selection. The global cell-line mean and the locus-shared references are excluded from the primary comparison set. The locus-shared references use measured maps from evaluation regions of *other* cell lines, so they are context only.
-
-## Hypotheses
-
-- **H1** — exceeds the strongest trained baseline on contact-map accuracy.
-- **H2** — the insulation constraint improves TAD and loop recovery under equal compute, evaluated on **independent** boundaries (insulation-derived boundaries are internal consistency only, since training supervises insulation).
-- **H3** — pretraining on the five training lines plus few-shot adaptation beats training from scratch on the same limited data, for at least two of the four held-out lines; evaluated on official test regions never seen in training.
-- **H4** — tracks the direction of structural-variant effects, **only** where observed before/after maps exist; otherwise restricted to a labelled in-silico analysis.
-
-## Stopping rules
-
-Fixed in advance (`docs/evaluation_protocol.md` §7). Three narratives each have a pre-specified criterion: **insulation-constrained** (H2 met), **multi-scale** (H1 met and the mixer ablation significant), and **few-shot adaptation** (H3 met in at least two held-out lines). The title follows whichever holds. If none holds, the project is stopped and redesigned, not reframed as a benchmark or negative-result paper. If the model does not beat the global cell-line mean, the project fails in its current form. If the structural loss shows no benefit, every structure-constrained claim is removed, including from the title.
-
-## Repository layout
-
-```
-CLAUDE.md                      working rules and conventions
-Roadmap.md                     decisions, phases, open items
-docs/evaluation_protocol.md    benchmark, metrics, statistics, baselines, hypotheses
-docs/architecture.md           model, training, loss, ablations
-docs/data_processing.md        data sources and dataset construction
-paper/manuscript.md            manuscript draft (Results empty)
+```mermaid
+flowchart LR
+    A["🧬 1 Mb DNA<br/>one-hot"] --> B["Conv tower<br/>11 RC-paired blocks<br/>→ 512 bins"]
+    B --> C["Bi-Mamba × 8<br/>RC-shared scans<br/>+ FiLM(cell line)"]
+    C --> D["Multi-scale mixer<br/>3 depths × 4 scales"]
+    D --> E["Symmetric pair head<br/>biaffine + distance bias"]
+    E --> F["🗺️ 448 × 448<br/>contact map"]
+    F -. "insulation & boundary<br/>loss (same operator<br/>on prediction and truth)" .-> G(("L_struct"))
+    F -. "masked MSE" .-> H(("L_contact"))
 ```
 
-Created when first needed: `configs/` (one config per run), `src/` (model, training, evaluation), `notebooks/` (exploration and sanity checks), `notes/` (experiment log, including negative results), `docs/data_manifest.md` (data provenance).
+- **Insulation constraint on the map itself.** The boundary signal is computed from the predicted map with the very same operator applied to the measured map. There is no separate "structure head" that could be right while the map is wrong.
+- **Reverse-complement equivariant end to end.** Every layer is equivariant, from the conv tower and the bidirectional Mamba to the mixer and the pair head. It follows the parameter sharing of [Caduceus](https://arxiv.org/abs/2403.03234), which we credit as the origin of the encoder idea.
+- **Multi-scale mixing** of shallow, intermediate and deep states, so domain-scale and loop-scale structure are modelled together.
+- **Cell-type adaptation** through a FiLM embedding, tested few-shot on four cell lines held out from all training.
 
-## Open items before training
+## 🔬 What the pilot data already show (no trained model on the test set)
 
-All protocol items are decided. Two are provisional until the DNALongBench files are inspected, because they determine where the gradient goes:
+<p align="center">
+  <img src="paper/figures/fig2_pilot.png" width="900" alt="Pilot results: reference baselines, disagreement of the two SCC weightings, and power of the H1 rule">
+</p>
 
-1. **Target space.** The papers document natural-log observed/expected, clipped to (−2, 2), interpolated and smoothed, with diagonal offset 2. The released files must confirm this before any loss is written.
-2. **Insulation transform.** `g(x) = exp(2·tanh(x/2))`, applied identically to prediction and target.
+1. **🪞 Copying other cell types' maps already matches published Akita.** A non-learned "locus-shared" reference (the average of the *other* lines' measured maps at the same locus) scores 0.227 SCC vs. Akita's published 0.230. Much of what the benchmark rewards is shared across cell types.
+2. **⚖️ Two popular SCC formulas disagree.** HiCRep weighting favours short-range contacts, while the benchmark code favours long-range ones (Spearman ρ = 0.54). We pre-register HiCRep as primary and report both.
+3. **📉 A common comparison rule has zero power.** Testing against the *per-block best* of three baselines can never succeed at this sample size. We test against **each** baseline instead (an intersection–union test).
 
-Also outstanding: reading the ChiMamba chapter in full (closest architectural precedent), and selecting the accessions of the independent boundary and loop datasets.
+<p align="center">
+  <img src="paper/figures/fig3_structure_control.png" width="720" alt="Positive control: measured maps recover independent 4DN boundaries and ENCODE CTCF ChIA-PET loops">
+</p>
 
-## Reproducibility
+4. **✅ The evaluation pipeline works.** Before any model is trained, the *measured* maps recover the independent 4DN boundaries (AUROC 0.61–0.91) and ENCODE CTCF ChIA-PET loops (AUROC 0.86–0.90). A null result for the insulation loss will therefore mean something.
 
-Every reported number must be reproducible from a committed config and recorded commit, with 3 seeds per model and logged seeds, hardware and versions. Negative and null results are reported with the same prominence as positive ones.
+## 🎯 Pre-registered hypotheses
 
-## Data
+| | Hypothesis | Success means |
+|---|---|---|
+| **H1** | HiFold-Mamba beats **each** trained baseline (reproduced Akita, matched Transformer, matched CNN) | ΔSCC ≥ 0.01 vs. every baseline, block bootstrap, one-sided α = 0.025 |
+| **H2** | The insulation + boundary loss improves structure recovery | +0.02 boundary AUROC **and** +0.02 loop AP on *independent* annotations, with no loss of SCC |
+| **H3** | Pretraining + few-shot adaptation beats training from scratch on unseen cell lines | Significant gain in ≥ 2 of 4 held-out lines (HAP1, HeLa, HepG2, K562) |
 
-All data are public: DNALongBench for training and evaluation; 4D Nucleome Hi-C/Micro-C and ENCODE CTCF ChIP-seq and ATAC-seq for structural evaluation. Histone marks and other epigenomic inputs are v2 only. Accessions, assay, depth, build, licence and access date will be recorded in `docs/data_manifest.md` as each dataset is obtained. No individual-level human genotype data are used — reference sequence and cell-line data only.
+Every outcome is reported, positive or negative. The paper's title and claims follow whichever hypotheses hold, as fixed in advance in [§2.15 of the manuscript](paper/manuscript.pdf).
 
-## Citation
+## 🗺️ Where we are
 
-Not yet published. Cite the repository if you use the protocol or code.
+- [x] Protocol, metrics, statistics and stopping rules fixed
+- [x] All data downloaded and MD5-verified ([manifest](docs/data_manifest.md))
+- [x] Model, baselines, training, evaluation and statistics code, with 64 unit tests
+- [x] Pilot data: reference baselines, power analysis, H2 positive control
+- [x] Akita reproduction, seed 0 (validation SCC 0.196 with the benchmark code)
+- [x] Stage 1 manuscript, five internal review rounds
+- [ ] Stage 1 submission to **PCI Registered Reports**
+- [ ] After in-principle acceptance: ≈ 640 GPU-hours of confirmatory runs, then unseal the test set
+- [ ] Stage 2 report → *Peer Community Journal*
 
-## Authors
+> 🔒 **The test set is sealed.** No trained model has been scored on it, and none will be until the Stage 1 protocol is accepted and registered.
 
-- **Mohammad Malekpouri** (corresponding) — [0009-0001-6278-6163](https://orcid.org/0009-0001-6278-6163)
-- **Somayeh Lotfi** — [0000-0002-7218-5388](https://orcid.org/0000-0002-7218-5388)
+## 🚀 Quick start
+
+```bash
+git clone https://github.com/malekpouri/HiFold-Mamba.git && cd HiFold-Mamba
+uv venv --python 3.12 && uv pip install -r requirements.lock.txt && uv pip install -e .
+
+# 1. Data: DNALongBench contact-map task (CC0, MD5-checked, resumable)
+python -I scripts/download_dnalongbench.py DATA_DIR contact_map_prediction
+python scripts/build_cache.py TFR_DIR SEQUENCES_BED LINE_NAMES CACHE_DIR HG38_FA
+
+# 2. Tests (RC equivariance, metrics, statistics, data)
+pytest -q
+
+# 3. Train (every run logs config, commit, environment and metrics)
+python -m hifold.train configs/hifold_paper.yaml data.root=CACHE_DIR
+python -m hifold.train configs/akita_repro.yaml  data.root=CACHE_DIR
+
+# 4. Evaluate on validation
+python scripts/evaluate.py checkpoint runs/<run>/best.pt valid out.tsv
+```
+
+Runs on a single 8 GB GPU (bf16 + gradient checkpointing). The selective scan is pure PyTorch, so no custom CUDA kernels are needed.
+
+## 📁 Repository map
+
+```
+src/hifold/model/     HiFold-Mamba, RC-equivariant layers, selective scan, Akita, baselines
+src/hifold/eval/      SCC (HiCRep + benchmark), block bootstrap, IUT, structure evaluation
+src/hifold/structure.py  insulation & boundary operators (differentiable)
+configs/              one YAML per run: model, baselines, ablations, structural arm
+scripts/              download, cache, evaluate, pilots, power analysis, figures
+tests/                64 unit tests
+paper/                manuscript, figures, cover letter, internal review rounds
+docs/                 protocol, architecture, data manifest
+notes/                lab notebook, including negative results
+```
+
+## 📚 Citation
+
+The Stage 1 Registered Report is in preparation. Until it is published, please cite the repository:
+
+```bibtex
+@misc{malekpouri2026hifold,
+  title  = {Does a map-level insulation constraint improve sequence-based prediction of
+            3D genome folding? A Stage 1 Registered Report with a
+            reverse-complement-equivariant state-space model (HiFold-Mamba)},
+  author = {Malekpouri, Mohammad and Lotfi, Somayeh},
+  year   = {2026},
+  url    = {https://github.com/malekpouri/HiFold-Mamba}
+}
+```
+
+## 👥 Authors
+
+**Mohammad Malekpouri** (corresponding) · [ORCID 0009-0001-6278-6163](https://orcid.org/0009-0001-6278-6163) · m.malekpouri@iau.ir<br>
+**Somayeh Lotfi** · [ORCID 0000-0002-7218-5388](https://orcid.org/0000-0002-7218-5388) · somayeh.lotfi@iau.ac.ir
 
 Department of Computer Engineering, BA.C., Islamic Azad University, Bandar Abbas, Iran
 
-## AI assistance
+<sub>🤖 **AI use.** Claude (Anthropic) was used to generate code and to draft and edit the manuscript text. The authors made or approved every design decision and take full responsibility for the content.</sub>
 
-Claude (Anthropic) was used to generate code and to draft and edit the manuscript text. The authors made or approved every design decision and take full responsibility for the content. Items not yet verified are marked `[UNVERIFIED]` in the documents.
-
-## License
-
-MIT — see [LICENSE](LICENSE).
+<sub>📜 Code: [MIT License](LICENSE). Data: DNALongBench (CC0), 4DN and ENCODE (see the [manifest](docs/data_manifest.md)).</sub>
