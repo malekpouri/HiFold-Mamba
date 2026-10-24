@@ -1,14 +1,16 @@
 ---
 title: "Does a map-level insulation constraint improve sequence-based prediction of 3D genome folding? A Stage 1 Registered Report with a reverse-complement-equivariant state-space model (HiFold-Mamba)"
 author:
-  - Mohammad Malekpouri (corresponding; ORCID 0009-0001-6278-6163)
-  - Somayeh Lotfi (ORCID 0000-0002-7218-5388)
+  - Mohammad Malekpouri (corresponding author; m.malekpouri@iau.ir; ORCID 0009-0001-6278-6163)
+  - Somayeh Lotfi (somayeh.lotfi@iau.ac.ir; ORCID 0000-0002-7218-5388)
 date: "Stage 1 protocol, version 2026-10-23"
 bibliography: references.bib
 link-citations: true
 ---
 
 **Affiliation.** Department of Computer Engineering, BA.C., Islamic Azad University, Bandar Abbas, Iran.
+
+**Correspondence.** Mohammad Malekpouri, <m.malekpouri@iau.ir>, ORCID [0009-0001-6278-6163](https://orcid.org/0009-0001-6278-6163). Somayeh Lotfi, <somayeh.lotfi@iau.ac.ir>, ORCID [0000-0002-7218-5388](https://orcid.org/0000-0002-7218-5388).
 
 **Article type.** Stage 1 Registered Report (introduction, methods, analysis plan and pilot data; no confirmatory outcome has been observed). Code, configurations and pilot outputs: <https://github.com/malekpouri/HiFold-Mamba> (commit recorded at submission).
 
