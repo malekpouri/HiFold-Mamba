@@ -24,3 +24,22 @@ Trivial references on 200 random training windows:
 3. Try Adam on a small subset to see whether the architecture can fit at all.
 
 Akita stays in 𝓑 either way (manuscript §2.4); a weak reproduction is reported as a deviation.
+
+## Final result (2026-10-24 01:36)
+
+The run completed all 70,080 steps (about 14.9 h on the shared GPU). Validation (mean over the 5 lines, EMA weights, step 70,080):
+
+| Metric | Value |
+|---|---|
+| SCC_benchmark | 0.196 |
+| SCC_hicrep | 0.469 |
+| PCC | 0.396 |
+
+Learning was slow until about step 45,000. It then rose steadily: SCC_benchmark 0.012 → 0.135 → 0.154 → 0.186 → 0.196. It was still rising at the last step, so the fixed schedule may stop short of convergence. PCC is noisy between evals (0.134 at step 63,072).
+
+**Decision rule:** 0.196 ≥ 0.15, so it **passes**. No diagnosis is triggered, and the reproduction can serve as the trained Akita baseline.
+
+**Caveats:**
+- This is a validation number; the published 0.230 is on the test set, so the two are not directly comparable.
+- The test set stays sealed.
+- One seed only. Seeds 1 and 2 are still needed for Stage 2.
