@@ -38,7 +38,9 @@ PYTHONPATH=src nohup .venv/bin/python -m hifold.train configs/akita_repro.yaml >
 
 ## Paper (goal: Q1-ready manuscript), state 2026-10-23 evening
 - **Stage 1 Registered Report:** `paper/manuscript.md` → `paper/manuscript.pdf` (21 pages, 3 figures, 23 verified references), plus `paper/cover_letter.md`.
-- **What the authors must supply:** `paper/SUBMISSION_CHECKLIST.md` (venue, deviations D1–D7, statements, reviewers, compute).
+- **Venue:** PCI RR → Peer Community Journal (chosen 2026-10-24). D1–D7 and all statements settled. Remaining: the authors' full read-through, then submission (`paper/pci_rr_submission_notes.md`).
+- **Akita seed 0 done:** validation SCC_benchmark 0.196; seeds 1–2 are still needed.
+- **Build:** `cd paper && pandoc manuscript.md --citeproc -o manuscript.pdf --pdf-engine=xelatex -V geometry:margin=2.2cm -V fontsize=10pt -V mainfont="DejaVu Serif" -V linestretch=1.15 -V header-includes='\usepackage{lineno}\linenumbers'`
 - **Review trail:** five critic/author rounds in `paper/review/`.
 - **Analysis code ready:** H1 intersection–union (`stats.against_each`), H2 bootstrap (`eval/structure_eval.py`), H2 positive control (`scripts/pilot_structure.py`), power analysis (`scripts/power_analysis.py`).
 - **Do NOT score trained models on the test set before Stage 1 acceptance.**

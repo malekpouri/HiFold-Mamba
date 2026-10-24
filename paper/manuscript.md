@@ -275,6 +275,8 @@ Safeguards:
 * The evaluation code is frozen at the commit recorded at submission. Any later change is listed with its reason in the Stage 2 report.
 * The Akita reproduction is trained before acceptance, on training and validation windows only. Its validation scores are pilot data.
 
+**Bias-control level (PCI RR taxonomy).** We declare **Level 2**. The benchmark data exist, and some of them, including the test-set targets, have been accessed and partly observed by the authors (above). The key variables that answer H1–H3 have not been observed and do not yet exist: the trained models' test-set predictions, and their intersection with the independent annotations on test windows. They will be generated only after in-principle acceptance. The safeguards above are the additional steps to strengthen bias control that this level requires.
+
 ## 2.17 Study design table
 
 | Question | Hypothesis | Sampling plan | Analysis plan | Rationale for test sensitivity | Interpretation given different outcomes | Theory that could be shown wrong |
