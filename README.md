@@ -102,7 +102,7 @@ Department of Computer Engineering, BA.C., Islamic Azad University, Bandar Abbas
 
 ## AI assistance
 
-AI assistance (Claude, Anthropic) has been used for protocol drafting and manuscript preparation, and will be used for code development. The authors are responsible for all content and will verify every claim, citation and number against its primary source before submission. Items not yet verified are marked `[UNVERIFIED]` in the documents.
+Claude (Anthropic) was used to generate code and to draft and edit the manuscript text. The authors made or approved every design decision and take full responsibility for the content. Items not yet verified are marked `[UNVERIFIED]` in the documents.
 
 ## License
 

@@ -14,7 +14,7 @@ We therefore fix the hypotheses, the comparison set, the margins, the statistics
 
 **What is ready.**
 
-- Model, baselines, training, evaluation and statistics code, with 63 unit tests, including exact reverse-complement equivariance checks.
+- Model, baselines, training, evaluation and statistics code, with 64 unit tests, including exact reverse-complement equivariance checks.
 - Every dataset downloaded with checksums and accessions.
 - A positive control showing that the H2 evaluation pipeline recovers the independent annotations from observed maps.
 - A simulation-based power analysis.
@@ -23,7 +23,7 @@ No trained model has been evaluated on the test set.
 
 **Data status (bias control).** All data are public and already exist. Before this submission we accessed the training and validation data, and the test-set *targets* only for non-learned references and the power analysis. The independent annotations were intersected only with observed validation maps. Section 2.16 lists all data access and the safeguards we have adopted.
 
-The work has not been submitted elsewhere. All authors have approved the submission *(to be confirmed)*. We suggest reviewers with expertise in 3D-genome modelling, sequence-based deep learning and statistics for genomics benchmarks *(names to be added by the authors)*.
+The work has not been submitted elsewhere. Both authors have approved the submission. The study received no external funding, and the authors declare no competing interests.
 
 Sincerely,
 Mohammad Malekpouri (corresponding author), on behalf of both authors

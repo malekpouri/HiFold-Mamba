@@ -54,7 +54,7 @@ Sequence-only models now span several scales. Akita predicts 448 × 448 maps at 
 
 ## 1.3 This study
 
-We register a design that answers (i), with (ii) and (iii) built into the analysis. The test vehicle is HiFold-Mamba, an RC-equivariant bidirectional state-space model. We do **not** claim the encoder family as a contribution: bidirectional, RC-equivariant Mamba layers for DNA are the core of Caduceus [@schiff2024], and a bidirectional Mamba has been applied to chromatin-interaction prediction from sequence and accessibility (ChiMamba) [@zhang2024]. At 512 bins per window, attention is computationally cheap, so we make **no efficiency claim**. The encoder matters to this study only because the matched Transformer and CNN ablations (H1, Section 2.4) separate encoder choice from the structural objective (H2).
+We register a design that answers (i), with (ii) and (iii) built into the analysis. The test vehicle is HiFold-Mamba, an RC-equivariant bidirectional state-space model. We do **not** claim the encoder family as a contribution: bidirectional, RC-equivariant Mamba layers for DNA are the core of Caduceus [@schiff2024], and a bidirectional Mamba has been applied to chromatin-interaction prediction from sequence and accessibility (ChiMamba) [@zhang2024]; we position ChiMamba from its published abstract, as the full chapter was not accessible to us. At 512 bins per window, attention is computationally cheap, so we make **no efficiency claim**. The encoder matters to this study only because the matched Transformer and CNN ablations (H1, Section 2.4) separate encoder choice from the structural objective (H2).
 
 Contributions, conditional on the pre-registered outcomes:
 
@@ -298,9 +298,10 @@ All pilot numbers come from logged scripts in the repository. None involves a tr
 
 ## 3.2 Implementation checks
 
-* **Equivariance.** All equivariance tests pass in fp32 (10⁻⁴ / 10⁻⁵), including the full-length network on real sequence. The negative control (unpaired head) is detected. The − RC ablation is verified to break equivariance while keeping the outputs symmetric. In total, 63 unit tests pass at the protocol commit, including the H1 intersection–union test and the exact weighted AUROC/AP used for H2.
+* **Equivariance.** All equivariance tests pass in fp32 (10⁻⁴ / 10⁻⁵), including the full-length network on real sequence. The negative control (unpaired head) is detected. The − RC ablation is verified to break equivariance while keeping the outputs symmetric. In total, 64 unit tests pass at the protocol commit, including the H1 intersection–union test and the exact weighted AUROC/AP used for H2.
 * **Metrics.** The vectorized benchmark SCC reproduces the released loop implementation exactly. HiCRep SCC is tested against a direct implementation.
 * **Compute** (RTX 5050, 8 GB, bf16, one window × five lines): HiFold-Mamba 1.34 s per step at 3.84 GiB peak; matched Transformer 0.50 s; matched CNN 0.47 s; Akita 0.25 s per step at batch 2 (4.73 GiB).
+* **Akita reproduction (training and validation only).** Seed 0 completed the full 70,080-step schedule. Final validation SCC (mean over the five lines, EMA weights): 0.196 with the benchmark code, 0.469 with HiCRep weights, PCC 0.396. Learning was slow until about step 45,000 and was still rising at the final step. The run passes our internal pre-use check (validation SCC, benchmark code, ≥ 0.15); the reproduction criterion of Section 2.4 is assessed on the test set at Stage 2. Validation and test values are not directly comparable. Median step time 0.27 s when the GPU was not shared; wall-clock time 14.8 h because the GPU was shared with another project.
 
 ## 3.3 Reference baselines on the test set
 
@@ -340,14 +341,14 @@ On the authors' RTX 5050 (8 GB), the confirmatory programme needs about:
 | Item | Runs × time per run | GPU hours |
 |---|---|---|
 | HiFold Base and Struct, 3 seeds each | 6 × 26 h | 157 |
-| $\mathcal{B}$: Akita, matched Transformer, matched CNN, 3 seeds each | 3 × (4.9 + 9.7 + 9.2) h | 71 |
+| $\mathcal{B}$: Akita, matched Transformer, matched CNN, 3 seeds each | 3 × (5.2 + 9.7 + 9.2) h | 72 |
 | λ pilot (9 settings, validation, Struct phase only) | 9 × 6.5 h | 59 |
 | Ablations − RC, − mixer, 3 seeds each | 6 × 26 h | 157 |
 | H3: 4 lines × 4 regimes × 2 arms × 3 seeds | 96 × ≈ 1 h | ≈ 100 |
 | Window sensitivity, robustness split (1 seed) | — | ≈ 100 |
 | **Total** | | **≈ 640** |
 
-That is about four weeks of continuous single-GPU time. The Akita reproduction (training and validation only) is queued on the shared GPU. Stage 2 submission is planned within six months of in-principle acceptance.
+That is about four weeks of continuous single-GPU time. Per-run times are measured step times (Section 3.2) multiplied by the schedule; the Akita time is the measured median for seed 0 without GPU sharing. Stage 2 submission is planned within six months of in-principle acceptance.
 
 # 5. Limitations (stated before outcomes)
 
@@ -363,15 +364,17 @@ That is about four weeks of continuous single-GPU time. The Akita reproduction (
 
 **Data availability.** All data are public: DNALongBench (doi:10.7910/DVN/AZM25S, CC0); 4DN boundary files and ENCODE ChIA-PET files with the accessions in Section 2.8. Checksums and access dates are in `docs/data_manifest.md`.
 
-**Code availability.** <https://github.com/malekpouri/HiFold-Mamba>: model, baselines, training, evaluation, statistics, tests and configurations. Environment: Python 3.12.14, PyTorch 2.14.1 (CUDA 13.0), NumPy 2.5.4, SciPy 1.18.1, pinned in `requirements.lock.txt` and `uv.lock`. Hardware: NVIDIA RTX 5050 (8 GB). The selective scan is a pure-PyTorch implementation, so no custom CUDA kernels are needed. Licence and copyright holder to be confirmed by the authors.
+**Code availability.** <https://github.com/malekpouri/HiFold-Mamba>: model, baselines, training, evaluation, statistics, tests and configurations. Environment: Python 3.12.14, PyTorch 2.14.1 (CUDA 13.0), NumPy 2.5.4, SciPy 1.18.1, pinned in `requirements.lock.txt` and `uv.lock`. The selective scan is a pure-PyTorch implementation, so no custom CUDA kernels are needed. Code licence: MIT.
 
-**Author contributions (CRediT).** To be confirmed by both authors before submission.
+**Computational resources.** All work used one workstation: NVIDIA GeForce RTX 5050 GPU (8 GB, Blackwell), Intel Core i5-11400 CPU (6 cores, 12 threads), 32 GB RAM, Ubuntu Linux; bf16 mixed precision with gradient checkpointing. No cloud or HPC resources were used. Stage 1 compute: data preparation, reference baselines, power simulations and the H2 positive control ran on the CPU; the only GPU training was the Akita reproduction (seed 0, 14.8 h wall-clock on a shared GPU). Stage 2 needs about 640 GPU-hours on the same hardware (Section 4).
 
-**Competing interests.** None declared *(to be confirmed by the authors)*.
+**Author contributions (CRediT).** Mohammad Malekpouri: Conceptualization, Methodology, Software, Investigation, Formal analysis, Data curation, Visualization, Project administration, Writing – original draft, Writing – review & editing. Somayeh Lotfi: Writing – review & editing. Both authors approved the final manuscript.
 
-**Funding.** *(to be completed by the authors)*.
+**Competing interests.** The authors declare no competing interests.
 
-**Use of AI tools.** Claude (Anthropic) assisted with drafting the protocol and manuscript, writing and testing code, and checking references. The authors take responsibility for all content and have verified every claim, citation and number against its source. *(Authors to confirm.)*
+**Funding.** This research received no external funding.
+
+**Use of AI tools.** Claude (Anthropic) was used to generate code and to draft and edit the manuscript text. The authors made or approved every design decision and take full responsibility for the content.
 
 # References
 
