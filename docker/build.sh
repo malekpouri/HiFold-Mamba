@@ -33,6 +33,6 @@ if [ "${1:-}" != "--no-save" ]; then
   mkdir -p dist
   out="dist/hifold-mamba_${short}.tar.gz"
   docker save "hifold-mamba:$short" | gzip -1 > "$out"
-  sha256sum "$out" > "$out.sha256"
+  (cd dist && sha256sum "${out#dist/}" > "${out#dist/}.sha256")
   echo "saved $out ($(du -h "$out" | cut -f1))"
 fi
