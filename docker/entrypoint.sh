@@ -18,6 +18,8 @@ HiFold-Mamba container. Commands:
   train CONFIG [key=value ...]
                         e.g. train hifold_paper seed=1 ; runs are written to /work/runs
   evaluate ARGS         scripts/evaluate.py, e.g. evaluate checkpoint /work/runs/<run>/best.pt valid /work/out.tsv
+  dashboard [--port N]  read-only web monitor of /work/runs, reports in /work/reports
+                        (publish with -p 127.0.0.1:8080:8080; HIFOLD_DASH_TOKEN=... to require a token)
   python ARGS | bash    anything else
 EOF
     ;;
@@ -50,5 +52,10 @@ EOF
     exec python -m hifold.train "$cfg" run_root=/work/runs "$@"
     ;;
   evaluate) exec python scripts/evaluate.py "$@" ;;
+  dashboard)
+    mkdir -p /work/runs /work/reports
+    exec python -m hifold.monitor --runs /work/runs --reports /work/reports \
+         --programme configs/programme.yaml --host 0.0.0.0 "$@"
+    ;;
   *) exec "$cmd" "$@" ;;
 esac

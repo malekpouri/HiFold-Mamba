@@ -1,0 +1,88 @@
+# Stage 2 confirmatory programme (manuscript Section 4): what the monitor dashboard tracks.
+# Not a training config. Each task matches run directories <name>-<config hash>-s<seed> by
+#   name:        exact run name (the config's `name`), with the listed seeds, or
+#   name_prefix: any run whose name starts with it (use `name=<prefix>_<k>` overrides; `name` is
+#                excluded from the config hash, so renaming does not change what is trained).
+# `config: null` means the run configs for that task are not written yet.
+# GPU-hour figures are the RTX 5050 estimates from the manuscript; the dashboard also shows measured times.
+
+tasks:
+  - id: base
+    label: "HiFold-Mamba Base (contact loss only)"
+    hypothesis: H1, H2
+    config: hifold_paper
+    name: hifold_paper
+    seeds: [0, 1, 2]
+    est_gpu_h: 26
+
+  - id: struct
+    label: "HiFold-Mamba Struct (insulation + boundary loss)"
+    hypothesis: H2
+    config: hifold_struct
+    name: hifold_struct
+    seeds: [0, 1, 2]
+    est_gpu_h: 26
+
+  - id: akita
+    label: "Baseline: Akita reproduction"
+    hypothesis: H1
+    config: akita_repro
+    name: akita_repro
+    seeds: [0, 1, 2]
+    est_gpu_h: 5.2
+
+  - id: attention
+    label: "Baseline: matched Transformer"
+    hypothesis: H1
+    config: baseline_attention
+    name: baseline_attention
+    seeds: [0, 1, 2]
+    est_gpu_h: 9.7
+
+  - id: conv
+    label: "Baseline: matched CNN"
+    hypothesis: H1
+    config: baseline_conv
+    name: baseline_conv
+    seeds: [0, 1, 2]
+    est_gpu_h: 9.2
+
+  - id: lambda
+    label: "Lambda pilot (9 settings, validation only)"
+    hypothesis: H2 (tuning)
+    config: hifold_struct
+    name_prefix: lambda_pilot
+    expected: 9
+    est_gpu_h: 6.5
+
+  - id: norc
+    label: "Ablation: without RC equivariance"
+    hypothesis: ablation
+    config: ablation_norc
+    name: ablation_norc
+    seeds: [0, 1, 2]
+    est_gpu_h: 26
+
+  - id: nomixer
+    label: "Ablation: without multi-scale mixer"
+    hypothesis: ablation
+    config: ablation_nomixer
+    name: ablation_nomixer
+    seeds: [0, 1, 2]
+    est_gpu_h: 26
+
+  - id: h3
+    label: "H3 few-shot (4 lines x 4 regimes x 2 arms x 3 seeds)"
+    hypothesis: H3
+    config: null
+    name_prefix: h3_
+    expected: 96
+    est_gpu_h: 1
+
+  - id: sensitivity
+    label: "Window sensitivity and robustness split (1 seed)"
+    hypothesis: robustness
+    config: null
+    name_prefix: robust_
+    expected: null
+    est_gpu_h_total: 100

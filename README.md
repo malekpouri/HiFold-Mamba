@@ -5,7 +5,7 @@
 ### From one megabase of DNA to a 3D contact map, and a test of whether teaching the model *insulation* makes it fold chromatin better
 
 [![Stage 1 Registered Report](https://img.shields.io/badge/Registered_Report-Stage_1-6f42c1)](paper/manuscript.pdf)
-[![Tests](https://img.shields.io/badge/tests-64_passing-2ea44f)](tests/)
+[![Tests](https://img.shields.io/badge/tests-69_passing-2ea44f)](tests/)
 [![Python](https://img.shields.io/badge/python-3.12-3776ab?logo=python&logoColor=white)](pyproject.toml)
 [![PyTorch](https://img.shields.io/badge/PyTorch-2.14-ee4c2c?logo=pytorch&logoColor=white)](requirements.lock.txt)
 [![Genome](https://img.shields.io/badge/genome-hg38-0b7285)](docs/data_manifest.md)
@@ -86,7 +86,7 @@ Every outcome is reported, positive or negative. The paper's title and claims fo
 
 - [x] Protocol, metrics, statistics and stopping rules fixed
 - [x] All data downloaded and MD5-verified ([manifest](docs/data_manifest.md))
-- [x] Model, baselines, training, evaluation and statistics code, with 64 unit tests
+- [x] Model, baselines, training, evaluation and statistics code, with 69 unit tests
 - [x] Pilot data: reference baselines, power analysis, H2 positive control
 - [x] Akita reproduction, seed 0 (validation SCC 0.196 with the benchmark code)
 - [x] Stage 1 manuscript, five internal review rounds
@@ -127,7 +127,7 @@ src/hifold/eval/      SCC (HiCRep + benchmark), block bootstrap, IUT, structure 
 src/hifold/structure.py  insulation & boundary operators (differentiable)
 configs/              one YAML per run: model, baselines, ablations, structural arm
 scripts/              download, cache, evaluate, pilots, power analysis, figures
-tests/                64 unit tests
+tests/                69 unit tests
 paper/                manuscript, figures, cover letter, internal review rounds
 docs/                 protocol, architecture, data manifest
 notes/                lab notebook, including negative results

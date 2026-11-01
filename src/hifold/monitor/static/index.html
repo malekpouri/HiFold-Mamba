@@ -1,0 +1,342 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>HiFold Monitor</title>
+<style>
+:root{
+  --bg:#f6f7f9;--surface:#fff;--fg:#1d2329;--muted:#5b6670;--faint:#8a949d;--line:#e1e5e9;--grid:#eceff2;
+  --accent:#2f5d8a;--bar:#2f5d8a;--bar-bg:#e6ebf0;
+  --s1:#0072B2;--s2:#C26A00;--s3:#00866A;           /* categorical, fixed order: HiCRep, benchmark, PCC */
+  --good:#1e7b3a;--warn:#9a6200;--crit:#b3261e;--info:#2f5d8a;
+  --good-bg:#e5f3e9;--warn-bg:#fdf1dc;--crit-bg:#fbe6e4;--info-bg:#e6eef7;
+  --seal-bg:#eef3f9;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#12161a;--surface:#1a1f24;--fg:#e4e8ec;--muted:#a1abb4;--faint:#77818a;--line:#2c333a;--grid:#242a30;
+  --accent:#8db7e3;--bar:#6fa3d8;--bar-bg:#2a323a;
+  --s1:#56B4E9;--s2:#E69F00;--s3:#3CC29A;
+  --good:#7fd19a;--warn:#f0c060;--crit:#ff8a80;--info:#8db7e3;
+  --good-bg:#1c3324;--warn-bg:#3a2e14;--crit-bg:#3d1f1c;--info-bg:#1d2a38;--seal-bg:#1d2630;
+}}
+:root[data-theme="dark"]{
+  --bg:#12161a;--surface:#1a1f24;--fg:#e4e8ec;--muted:#a1abb4;--faint:#77818a;--line:#2c333a;--grid:#242a30;
+  --accent:#8db7e3;--bar:#6fa3d8;--bar-bg:#2a323a;
+  --s1:#56B4E9;--s2:#E69F00;--s3:#3CC29A;
+  --good:#7fd19a;--warn:#f0c060;--crit:#ff8a80;--info:#8db7e3;
+  --good-bg:#1c3324;--warn-bg:#3a2e14;--crit-bg:#3d1f1c;--info-bg:#1d2a38;--seal-bg:#1d2630;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+header{background:var(--surface);border-bottom:1px solid var(--line);padding:12px 16px;display:flex;
+  flex-wrap:wrap;gap:8px 16px;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:5}
+header h1{font-size:17px;margin:0}
+header .meta{color:var(--muted);font-size:12px}
+main{max-width:1280px;margin:0 auto;padding:16px}
+button,select{font:inherit;color:var(--fg);background:var(--surface);border:1px solid var(--line);
+  border-radius:6px;padding:5px 10px;cursor:pointer}
+button.primary{background:var(--accent);color:var(--surface);border-color:var(--accent)}
+button:disabled{opacity:.6;cursor:wait}
+.seal{background:var(--seal-bg);border-radius:8px;padding:8px 12px;margin-bottom:16px;font-size:13px}
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin-bottom:16px}
+.tile{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:12px}
+.tile .k{color:var(--muted);font-size:12px}.tile .v{font-size:24px;font-weight:600;font-variant-numeric:tabular-nums}
+.tile .s{color:var(--faint);font-size:12px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin-bottom:16px}
+.card h2{font-size:15px;margin:0 0 10px;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}
+.scroll{overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-variant-numeric:tabular-nums}
+th{color:var(--muted);font-weight:500;font-size:12px;text-align:left;border-bottom:1px solid var(--line);padding:6px 8px;white-space:nowrap}
+td{border-bottom:1px solid var(--grid);padding:6px 8px;vertical-align:middle}
+td.n,th.n{text-align:right;white-space:nowrap}
+tr.click{cursor:pointer}tr.click:hover td{background:var(--bg)}tr.sel td{background:var(--info-bg)}
+code{font:12px ui-monospace,SFMono-Regular,Menlo,monospace}
+.muted{color:var(--muted)}.faint{color:var(--faint)}
+.badge{display:inline-flex;gap:4px;align-items:center;font-size:12px;padding:1px 8px;border-radius:999px;white-space:nowrap}
+.b-running{color:var(--info);background:var(--info-bg)}.b-finished{color:var(--good);background:var(--good-bg)}
+.b-failed{color:var(--crit);background:var(--crit-bg)}.b-stalled{color:var(--warn);background:var(--warn-bg)}
+.prog{display:flex;align-items:center;gap:8px;min-width:150px}
+.prog .t{flex:1;height:8px;background:var(--bar-bg);border-radius:4px;overflow:hidden;display:flex}
+.prog .t i{display:block;height:100%;background:var(--bar)}
+.prog .t i.run{background:var(--bar);opacity:.45;margin-left:2px}
+.prog span{font-size:12px;color:var(--muted);min-width:64px;text-align:right}
+.filters{display:flex;gap:6px;flex-wrap:wrap}
+.filters button.on{background:var(--info-bg);border-color:var(--accent)}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+@media(max-width:860px){.grid2{grid-template-columns:1fr}}
+.chart{position:relative}
+.chart svg{display:block;width:100%;height:auto;overflow:visible}
+.chart .gl{stroke:var(--grid)}.chart .ax{fill:var(--muted);font-size:11px}
+.chart .xh{stroke:var(--faint);stroke-dasharray:3 3}
+.legend{display:flex;gap:12px;flex-wrap:wrap;font-size:12px;color:var(--muted);margin:2px 0 4px}
+.legend i{display:inline-block;width:14px;height:3px;border-radius:2px;margin-right:5px;vertical-align:middle}
+.tip{position:absolute;pointer-events:none;background:var(--surface);border:1px solid var(--line);border-radius:6px;
+  padding:6px 8px;font-size:12px;box-shadow:0 2px 8px rgba(0,0,0,.15);white-space:nowrap;display:none;z-index:3}
+.kv{display:grid;grid-template-columns:max-content 1fr;gap:3px 12px;font-size:13px}
+.kv div:nth-child(odd){color:var(--muted)}
+pre{background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:8px;overflow:auto;max-height:260px;font-size:12px}
+.gpu{display:flex;gap:12px;flex-wrap:wrap;font-size:12px;color:var(--muted)}
+.gpu b{color:var(--fg);font-weight:600}
+.err{color:var(--crit)}
+details summary{cursor:pointer;color:var(--muted);font-size:13px}
+ul.rep{margin:6px 0 0;padding-left:18px}
+</style>
+</head>
+<body>
+<header>
+  <div><h1>🧬 HiFold-Mamba monitor</h1><div class="meta" id="meta">loading…</div></div>
+  <div class="gpu" id="gpu"></div>
+  <div style="display:flex;gap:8px;align-items:center">
+    <label class="muted" style="font-size:12px"><input type="checkbox" id="auto" checked> auto-refresh 15 s</label>
+    <button id="refresh">Refresh</button>
+  </div>
+</header>
+<main>
+  <div class="seal" id="seal"></div>
+  <div class="tiles" id="tiles"></div>
+
+  <div class="card">
+    <h2>Planned programme <span class="faint" style="font-weight:400;font-size:12px">configs/programme.yaml</span></h2>
+    <div class="scroll"><table id="tasks"></table></div>
+    <div id="unmatched" class="faint" style="font-size:12px;margin-top:6px"></div>
+  </div>
+
+  <div class="card">
+    <h2>Runs <span class="filters" id="filters"></span></h2>
+    <div class="scroll"><table id="runs"></table></div>
+  </div>
+
+  <div class="card" id="detail" hidden>
+    <h2><span id="d-title"></span><button id="d-close">Close</button></h2>
+    <div id="d-error"></div>
+    <div class="grid2">
+      <div><div class="muted" style="font-size:13px">Training loss</div><div class="legend" id="lg-loss"></div><div class="chart" id="c-loss"></div></div>
+      <div><div class="muted" style="font-size:13px">Validation (EMA weights)</div><div class="legend" id="lg-val"></div><div class="chart" id="c-val"></div></div>
+    </div>
+    <div class="grid2" style="margin-top:12px">
+      <div class="kv" id="d-kv"></div>
+      <details><summary>Resolved config</summary><pre id="d-cfg"></pre></details>
+    </div>
+  </div>
+
+  <div class="card" id="seedcard" hidden>
+    <h2>Finished runs: mean ± SD over seeds <span class="faint" style="font-weight:400;font-size:12px">selected checkpoints, validation, descriptive only</span></h2>
+    <div class="scroll"><table id="seeds"></table></div>
+  </div>
+
+  <div class="card">
+    <h2>Reports <button class="primary" id="mkrep">Generate report now</button></h2>
+    <div class="muted" style="font-size:13px">Each report is saved as HTML (open it and print to PDF), Markdown and CSV in the reports folder.</div>
+    <div id="replist"></div>
+  </div>
+</main>
+<script>
+"use strict";
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const f3 = v => v == null ? "–" : v.toFixed(3);
+const dur = s => s == null ? "–" : (s >= 172800 ? (s/86400).toFixed(1)+" d" : s >= 3600 ? (s/3600).toFixed(1)+" h" : Math.round(s/60)+" min");
+const ICON = {running:"▶", finished:"✔", failed:"✖", stalled:"⚠"};
+const badge = st => `<span class="badge b-${esc(st)}">${ICON[st]||""} ${esc(st)}</span>`;
+let data = null, selected = null, filter = "all", timer = null;
+try { filter = localStorage.getItem("hf-filter") || "all"; } catch (e) {}
+
+async function api(path, opt) {
+  const r = await fetch(path, opt);
+  if (!r.ok) throw new Error((await r.text()) || r.status);
+  return r.json();
+}
+
+function prog(done, running, total, label) {
+  const a = total ? Math.min(100, 100*done/total) : 0, b = total ? Math.min(100-a, 100*running/total) : 0;
+  return `<div class="prog"><div class="t"><i style="width:${a}%"></i>${b ? `<i class="run" style="width:${b}%"></i>` : ""}</div><span>${label}</span></div>`;
+}
+
+function render() {
+  const d = data;
+  $("#meta").textContent = `${d.host} · ${d.time} · runs: ${d.runs_root}`;
+  $("#seal").textContent = "🔒 " + d.sealed;
+  $("#gpu").innerHTML = (d.gpu || []).map(g =>
+    `<span><b>${esc(g.name)}</b> ${g.util ?? "–"}% busy · ${Math.round(g.mem_used)}/${Math.round(g.mem_total)} MiB · ${g.temp ?? "–"} °C${g.power != null ? ` · ${Math.round(g.power)} W` : ""}</span>`).join("")
+    || `<span>no GPU visible to the dashboard</span>`;
+  const runs = d.runs, tasks = d.tasks;
+  const nExp = tasks.reduce((s, t) => s + (t.expected || 0), 0);
+  const nDone = tasks.reduce((s, t) => s + Math.min(t.finished, t.expected ?? t.finished), 0);
+  const running = runs.filter(r => r.state === "running");
+  const probs = runs.filter(r => r.state === "failed" || r.state === "stalled");
+  const used = runs.reduce((s, r) => s + r.gpu_hours, 0);
+  const est = tasks.reduce((s, t) => s + (t.est_gpu_h || 0), 0);
+  const eta = Math.max(0, ...running.map(r => r.eta_s || 0));
+  $("#tiles").innerHTML = [
+    ["Planned runs finished", `${nDone} / ${nExp}`, nExp ? `${(100*nDone/nExp).toFixed(0)}% of the programme` : ""],
+    ["Running now", running.length, running.length ? `last running job ends in ${dur(eta)}` : "idle"],
+    ["Failed or stalled", probs.length, probs.length ? probs.map(r => r.run).join(", ").slice(0, 60) : "none"],
+    ["GPU time used", used.toFixed(1) + " h", `estimate for the programme ≈ ${Math.round(est)} h (RTX 5050)`],
+    ["Free disk (runs)", d.disk.free_gb.toFixed(0) + " GB", `of ${d.disk.total_gb.toFixed(0)} GB`],
+  ].map(([k, v, s]) => `<div class="tile"><div class="k">${k}</div><div class="v">${esc(v)}</div><div class="s">${esc(s)}</div></div>`).join("");
+
+  $("#tasks").innerHTML = `<tr><th>Task</th><th>Hypothesis</th><th>Progress</th><th class="n">Running</th><th class="n">Problems</th><th class="n">GPU-h used / est.</th></tr>` +
+    tasks.map(t => `<tr><td>${esc(t.label)}${t.config ? "" : ' <span class="faint">(configs not written yet)</span>'}</td>
+      <td class="muted">${esc(t.hypothesis)}</td>
+      <td>${prog(t.finished, t.running, t.expected, `${t.finished} / ${t.expected ?? "?"}`)}</td>
+      <td class="n">${t.running || ""}</td>
+      <td class="n">${t.problem ? `<span class="err">${t.problem}</span>` : ""}${t.duplicates ? ' <span class="badge b-stalled" title="same name and seed under different config hashes">⚠ duplicates</span>' : ""}</td>
+      <td class="n">${t.used_gpu_h.toFixed(1)} / ${t.est_gpu_h != null ? Math.round(t.est_gpu_h) : "–"}</td></tr>`).join("");
+  $("#unmatched").innerHTML = (d.programme_error ? `<div class="err">✖ ${esc(d.programme_error)}</div>` : "")
+    + (d.unmatched.length ? esc("Runs outside the programme: " + d.unmatched.join(", ")) : "");
+
+  const states = ["all", "running", "finished", "failed", "stalled"];
+  $("#filters").innerHTML = states.map(s => {
+    const n = s === "all" ? runs.length : runs.filter(r => r.state === s).length;
+    return `<button data-f="${s}" class="${filter === s ? "on" : ""}">${s === "all" ? "All" : ICON[s] + " " + s} (${n})</button>`;
+  }).join("");
+  const shown = runs.filter(r => filter === "all" || r.state === filter);
+  $("#runs").innerHTML = `<tr><th>Run</th><th>State</th><th>Progress</th><th class="n">s/step</th><th class="n">Time left</th>
+    <th class="n">Best val. SCC (HiCRep)</th><th class="n">at step</th><th class="n">SCC (bench.)</th><th class="n">PCC</th><th class="n">Last loss</th><th>Device</th></tr>` +
+    (shown.length ? shown.map(r => {
+      const b = r.best || {};
+      const pc = r.progress != null ? (100*r.progress).toFixed(1) + "%" : "–";
+      return `<tr class="click${r.run === selected ? " sel" : ""}" data-run="${esc(r.run)}">
+        <td><code>${esc(r.run)}</code>${r.attempts > 1 ? ` <span class="faint" title="restarted from step 0">(${r.attempts} attempts)</span>` : ""}</td>
+        <td>${badge(r.state)}${r.state === "stalled" ? `<div class="faint" style="font-size:11px">silent ${Math.round(r.idle_min)} min</div>` : ""}</td>
+        <td>${prog(r.state === "finished" ? r.steps : r.step, 0, r.steps, pc)}</td>
+        <td class="n">${r.sec_per_step != null ? r.sec_per_step.toFixed(2) : "–"}</td>
+        <td class="n">${dur(r.eta_s)}</td>
+        <td class="n"><b>${f3(b.scc_hicrep)}</b></td><td class="n muted">${b.step ?? "–"}</td>
+        <td class="n">${f3(b.scc_benchmark)}</td><td class="n">${f3(b.pcc)}</td>
+        <td class="n">${r.last_loss != null ? r.last_loss.toFixed(4) : "–"}</td>
+        <td class="muted" style="white-space:nowrap">${esc((r.device || "").replace(/^NVIDIA (GeForce )?/, ""))}</td></tr>`;
+    }).join("") : `<tr><td colspan="11" class="muted">No runs ${filter === "all" ? "yet. Start one with: hifold train hifold_paper seed=0" : "in this state"}.</td></tr>`);
+
+  $("#seedcard").hidden = !d.seeds.length;
+  $("#seeds").innerHTML = `<tr><th>Model</th><th>Config hash</th><th>Seeds</th><th class="n">SCC (HiCRep)</th><th class="n">SCC (benchmark)</th><th class="n">PCC</th></tr>` +
+    d.seeds.map(s => `<tr><td>${esc(s.name)}</td><td><code>${esc(s.hash)}</code></td><td>${s.seeds.join(", ")}</td>` +
+      ["scc_hicrep", "scc_benchmark", "pcc"].map(k => `<td class="n">${f3(s[k])} ± ${f3(s[k + "_sd"])}</td>`).join("") + "</tr>").join("");
+}
+
+/* ---------- line chart with crosshair tooltip (one y-axis, thin lines, recessive grid) ---------- */
+function lineChart(el, legendEl, series, opts = {}) {
+  const W = 560, H = 230, L = 52, R = 12, T = 10, B = 28;
+  const all = series.flatMap(s => s.points.filter(p => p[1] != null));
+  legendEl.innerHTML = series.length > 1 || opts.legend ? series.map(s =>
+    `<span><i style="background:${s.color};${s.faint ? "opacity:.35" : ""}"></i>${esc(s.label)}</span>`).join("") : "";
+  if (all.length < 2) { el.innerHTML = `<div class="faint" style="padding:30px 0">Not enough points yet.</div>`; return; }
+  let x0 = Math.min(...all.map(p => p[0])), x1 = Math.max(...all.map(p => p[0]));
+  let y0 = Math.min(...all.map(p => p[1])), y1 = Math.max(...all.map(p => p[1]));
+  if (opts.robust) {                       // loss: clip the first spikes so the trend is readable
+    const ys = all.map(p => p[1]).sort((a, b) => a - b); y1 = ys[Math.floor(0.98 * (ys.length - 1))];
+  }
+  if (opts.zero) y0 = Math.min(0, y0);
+  if (y1 === y0) y1 = y0 + 1e-6; if (x1 === x0) x1 = x0 + 1;
+  const pad = (y1 - y0) * 0.06; y1 += pad; if (!opts.zero) y0 -= pad;
+  const sx = x => L + (x - x0) / (x1 - x0) * (W - L - R), sy = y => T + (1 - (y - y0) / (y1 - y0)) * (H - T - B);
+  const ticks = n => Array.from({length: n + 1}, (_, i) => y0 + i * (y1 - y0) / n);
+  const fmtx = x => x >= 1000 ? (x / 1000).toFixed(x % 1000 ? 1 : 0) + "k" : String(x);
+  let s = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(opts.aria || "chart")}">`;
+  for (const t of ticks(4)) s += `<line class="gl" x1="${L}" x2="${W - R}" y1="${sy(t)}" y2="${sy(t)}"/><text class="ax" x="${L - 6}" y="${sy(t) + 4}" text-anchor="end">${+t.toPrecision(3)}</text>`;
+  for (let i = 0; i <= 4; i++) { const x = x0 + i * (x1 - x0) / 4; s += `<text class="ax" x="${sx(x)}" y="${H - 8}" text-anchor="middle">${fmtx(Math.round(x))}</text>`; }
+  if (opts.marker != null && opts.marker > x0 && opts.marker < x1)
+    s += `<line class="xh" x1="${sx(opts.marker)}" x2="${sx(opts.marker)}" y1="${T}" y2="${H - B}"/><text class="ax" x="${sx(opts.marker) + 4}" y="${T + 10}">${esc(opts.markerLabel || "")}</text>`;
+  for (const se of series) {
+    const pts = se.points.filter(p => p[1] != null).map(p => `${sx(p[0]).toFixed(1)},${sy(Math.min(p[1], y1)).toFixed(1)}`).join(" ");
+    s += `<polyline points="${pts}" fill="none" stroke="${se.color}" stroke-width="${se.faint ? 1 : 2}" ${se.faint ? 'opacity=".35"' : ""} stroke-linejoin="round"/>`;
+    if (se.dots) for (const p of se.points.filter(p => p[1] != null))
+      s += `<circle cx="${sx(p[0])}" cy="${sy(p[1])}" r="4" fill="${se.color}" stroke="var(--surface)" stroke-width="2"/>`;
+  }
+  s += `<line id="xh" class="xh" y1="${T}" y2="${H - B}" style="display:none"/><rect x="${L}" y="${T}" width="${W - L - R}" height="${H - T - B}" fill="transparent"/></svg><div class="tip"></div>`;
+  el.innerHTML = s;
+  const svg = el.querySelector("svg"), tip = el.querySelector(".tip"), xh = el.querySelector("#xh");
+  const xs = [...new Set(all.map(p => p[0]))].sort((a, b) => a - b);
+  svg.addEventListener("mousemove", ev => {
+    const rc = svg.getBoundingClientRect(), mx = (ev.clientX - rc.left) * W / rc.width;
+    const xv = x0 + (mx - L) / (W - L - R) * (x1 - x0);
+    let best = xs[0]; for (const x of xs) if (Math.abs(x - xv) < Math.abs(best - xv)) best = x;
+    xh.setAttribute("x1", sx(best)); xh.setAttribute("x2", sx(best)); xh.style.display = "";
+    const rows = series.filter(se => !se.noTip).map(se => {
+      let p = null; for (const q of se.points) if (q[1] != null && (!p || Math.abs(q[0] - best) < Math.abs(p[0] - best))) p = q;
+      return p ? `<div><i style="display:inline-block;width:10px;height:3px;background:${se.color};margin-right:5px;vertical-align:middle"></i>${esc(se.label)}: <b>${p[1].toFixed(4)}</b></div>` : "";
+    }).join("");
+    tip.innerHTML = `<div class="muted">step ${best.toLocaleString()}</div>${rows}`;
+    tip.style.display = "block";
+    const px = sx(best) * rc.width / W;
+    tip.style.left = Math.min(px + 12, rc.width - tip.offsetWidth) + "px"; tip.style.top = "8px";
+  });
+  svg.addEventListener("mouseleave", () => { tip.style.display = "none"; xh.style.display = "none"; });
+}
+
+function smooth(pts, k = 10) {
+  return pts.map((p, i) => { const w = pts.slice(Math.max(0, i - k + 1), i + 1).filter(q => q[1] != null);
+    return [p[0], w.length ? w.reduce((s, q) => s + q[1], 0) / w.length : null]; });
+}
+const css = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+
+async function showRun(name) {
+  selected = name;
+  if (location.hash !== "#run=" + encodeURIComponent(name)) history.replaceState(null, "", "#run=" + encodeURIComponent(name));
+  const r = await api("/api/run/" + encodeURIComponent(name));
+  $("#detail").hidden = false;
+  $("#d-title").innerHTML = `<code>${esc(r.run)}</code> ${badge(r.state)}`;
+  $("#d-error").innerHTML = r.error ? `<p class="err">✖ ${esc(r.error)}</p>${r.traceback ? `<details><summary>Traceback</summary><pre>${esc(r.traceback)}</pre></details>` : ""}`
+    : r.state === "stalled" ? `<p style="color:var(--warn)">⚠ No log line for ${Math.round(r.idle_min)} min. The process probably stopped without reporting (killed, out of memory or power loss). Check the container with <code>docker ps -a</code> and <code>docker logs</code>.</p>` : "";
+  const tr = r.series.train, ev = r.series.eval;
+  const raw = tr.map(x => [x[0], x[1]]);
+  const lossSeries = [{label: "loss (each log)", color: css("--s1"), points: raw, faint: true, noTip: true},
+                      {label: "moving average of 10 logs", color: css("--s1"), points: smooth(raw)}];
+  if (tr.some(x => x[3] != null)) lossSeries.push({label: "insulation term", color: css("--s2"), points: tr.map(x => [x[0], x[3]])});
+  if (tr.some(x => x[4] != null)) lossSeries.push({label: "boundary term", color: css("--s3"), points: tr.map(x => [x[0], x[4]])});
+  lineChart($("#c-loss"), $("#lg-loss"), lossSeries, {robust: true, legend: true, aria: "training loss",
+    marker: r.struct_from, markerLabel: "structural loss on"});
+  lineChart($("#c-val"), $("#lg-val"), [
+    {label: "SCC (HiCRep, selection metric)", color: css("--s1"), points: ev.map(x => [x[0], x[1]]), dots: true},
+    {label: "SCC (benchmark code)", color: css("--s2"), points: ev.map(x => [x[0], x[2]]), dots: true},
+    {label: "PCC", color: css("--s3"), points: ev.map(x => [x[0], x[3]]), dots: true}],
+    {zero: true, aria: "validation metrics", marker: r.best?.step, markerLabel: "selected"});
+  const kv = [["State", r.state + (r.status_time ? ` (at ${r.status_time})` : "")], ["Step", `${r.step.toLocaleString()} / ${r.steps.toLocaleString()}`],
+    ["Speed", r.sec_per_step != null ? r.sec_per_step.toFixed(3) + " s/step" : "–"], ["Time left", dur(r.eta_s)],
+    ["Wall-clock time", r.gpu_hours.toFixed(2) + " h" + (r.attempts > 1 ? ` over ${r.attempts} attempts` : "")],
+    ["Peak GPU memory", r.peak_gb != null ? r.peak_gb + " GiB" : "–"],
+    ["Best (selected) checkpoint", r.best ? `step ${r.best.step}: SCC ${f3(r.best.scc_hicrep)}` : "–"],
+    ["Device", r.device], ["Host", r.host], ["Commit", r.commit], ["Started", r.started], ["Model type", r.model_type]];
+  $("#d-kv").innerHTML = kv.map(([k, v]) => `<div>${esc(k)}</div><div>${esc(v ?? "–")}</div>`).join("");
+  $("#d-cfg").textContent = JSON.stringify(r.config, null, 2);
+  render();
+}
+
+async function loadReports() {
+  const l = await api("/api/reports");
+  const groups = {};
+  for (const f of l) { const k = f.name.replace(/\.(html|md|csv)$/, ""); (groups[k] ||= []).push(f.name); }
+  const keys = Object.keys(groups).slice(0, 15);
+  $("#replist").innerHTML = keys.length ? `<ul class="rep">` + keys.map(k => `<li><code>${esc(k)}</code>: ` +
+    groups[k].sort().map(n => `<a href="/reports/${encodeURIComponent(n)}" ${n.endsWith(".html") ? 'target="_blank"' : ""}>${n.split(".").pop().toUpperCase()}</a>`).join(" · ") + "</li>").join("") + "</ul>"
+    : `<p class="faint">No reports yet.</p>`;
+}
+
+async function refresh() {
+  try {
+    data = await api("/api/overview"); render();
+    if (selected && !$("#detail").hidden) await showRun(selected);
+  } catch (e) { $("#meta").innerHTML = `<span class="err">✖ ${esc(e.message)}</span>`; }
+}
+function schedule() { clearInterval(timer); if ($("#auto").checked) timer = setInterval(refresh, 15000); }
+
+$("#runs").addEventListener("click", e => { const tr = e.target.closest("tr[data-run]"); if (tr) showRun(tr.dataset.run).catch(err => alertBox(err)); });
+$("#filters").addEventListener("click", e => { const b = e.target.closest("button[data-f]"); if (!b) return;
+  filter = b.dataset.f; try { localStorage.setItem("hf-filter", filter); } catch (x) {} render(); });
+$("#d-close").onclick = () => { $("#detail").hidden = true; selected = null; history.replaceState(null, "", location.pathname); render(); };
+$("#refresh").onclick = refresh;
+$("#auto").onchange = schedule;
+$("#mkrep").onclick = async () => {
+  const b = $("#mkrep"); b.disabled = true; b.textContent = "Generating…";
+  try { const r = await api("/api/report", {method: "POST", headers: {"X-Requested-With": "hifold"}});
+        await loadReports(); window.open("/reports/" + encodeURIComponent(r.html), "_blank"); }
+  catch (e) { $("#replist").insertAdjacentHTML("afterbegin", `<p class="err">✖ ${esc(e.message)}</p>`); }
+  finally { b.disabled = false; b.textContent = "Generate report now"; }
+};
+function alertBox(e) { $("#meta").innerHTML = `<span class="err">✖ ${esc(e.message || e)}</span>`; }
+refresh().then(() => { const m = location.hash.match(/^#run=(.+)$/); if (m) showRun(decodeURIComponent(m[1])).catch(alertBox); });
+loadReports(); schedule();
+</script>
+</body>
+</html>

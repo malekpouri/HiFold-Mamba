@@ -65,6 +65,12 @@ def test_training_loop_runs_and_learns(tmp_path):
     evals = [r for r in recs if r.get("eval")]
     assert len(evals) == 2 and all(np.isfinite(e["scc_hicrep"]) for e in evals)
     assert (run / "best.pt").exists() and (run / "provenance.json").exists() and np.isfinite(best)
+    status = json.loads((run / "status.json").read_text())
+    assert status["state"] == "finished" and status["best"] == pytest.approx(best)
+    from hifold.monitor.runs import summarize           # the dashboard reads a real run correctly
+    sm = summarize(run)
+    assert sm["state"] == "finished" and sm["step"] == 60 and sm["attempts"] == 1
+    assert sm["best"]["scc_hicrep"] == pytest.approx(best)
 
     _, _, recs_shared = _run(tmp_path, cell_dist_bias=False)
     final_shared = np.mean([r["contact"] for r in recs_shared if "contact" in r][-3:])

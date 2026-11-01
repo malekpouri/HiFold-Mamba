@@ -86,6 +86,19 @@ def config_hash(cfg):
     return hashlib.sha1(json.dumps(keep, sort_keys=True).encode()).hexdigest()[:10]
 
 
+def run_dir(cfg):
+    return Path(cfg.get("run_root", "runs")) / f"{cfg['name']}-{config_hash(cfg)}-s{cfg['seed']}"
+
+
+def write_status(run, state, **extra):
+    """status.json for monitoring (hifold.monitor); written atomically, never read by training."""
+    rec = {"state": state, "time": time.strftime("%Y-%m-%d %H:%M:%S"), "pid": os.getpid(),
+           "host": os.uname().nodename, **extra}
+    tmp = Path(run) / "status.json.tmp"
+    tmp.write_text(json.dumps(rec, indent=2))
+    tmp.replace(Path(run) / "status.json")
+
+
 def lr_at(step, total, warmup, base, schedule="cosine"):
     if step < warmup:
         return base * (step + 1) / warmup
@@ -142,7 +155,7 @@ def train(cfg: dict):
     device = torch.device(cfg.get("device", "cuda" if torch.cuda.is_available() else "cpu"))
     model_type = cfg.get("model_type", "hifold")
     mcfg = (AkitaConfig if model_type == "akita" else HiFoldConfig)(**cfg["model"])
-    run = Path(cfg.get("run_root", "runs")) / f"{cfg['name']}-{config_hash(cfg)}-s{cfg['seed']}"
+    run = run_dir(cfg)
     run.mkdir(parents=True, exist_ok=True)
     (run / "config.yaml").write_text(yaml.safe_dump(cfg))
     (run / "provenance.json").write_text(json.dumps({
@@ -174,6 +187,7 @@ def train(cfg: dict):
     select = cfg.get("select_metric", "scc_hicrep")
     best, step, log = -np.inf, 0, open(run / "metrics.jsonl", "a")
     t0 = time.time()
+    write_status(run, "running", steps=total)
 
     while step < total:
         for x, y, cells, _ in tl:
@@ -228,6 +242,7 @@ def train(cfg: dict):
             if step >= total:
                 break
     log.close()
+    write_status(run, "finished", steps=total, best=float(best), select_metric=select)
     return run, best
 
 
@@ -244,5 +259,16 @@ def load_config(path, overrides=()):
 
 
 if __name__ == "__main__":
-    run, best = train(load_config(sys.argv[1], sys.argv[2:]))
+    import signal
+    # docker stop sends SIGTERM (PID 1 would otherwise ignore it): turn it into a clean, logged exit
+    signal.signal(signal.SIGTERM, lambda *_: sys.exit("stopped by SIGTERM"))
+    cfg = load_config(sys.argv[1], sys.argv[2:])
+    try:
+        run, best = train(cfg)
+    except BaseException as e:          # also Ctrl-C / docker stop: record why the run ended
+        import traceback
+        if run_dir(cfg).is_dir():
+            write_status(run_dir(cfg), "failed", error=f"{type(e).__name__}: {e}",
+                         traceback=traceback.format_exc()[-4000:])
+        raise
     print(f"{run}: best validation score {best:.4f}")

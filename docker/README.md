@@ -43,3 +43,47 @@ hifold train hifold_paper seed=0        # writes $WORK/runs/<name>-<hash>-s0/
 **Paths:** the configs refer to the authors' data path. Inside the image that path points to `/data/cache`, so configs and config hashes are the same as in the runs on the authors' workstation.
 
 **Commit:** the commit the image was built from is recorded in each run's metadata.
+
+## Web dashboard (progress and reports)
+
+The dashboard runs as a second container next to the training runs. It only **reads** `$WORK/runs`: it never starts or stops a run, and never reads test-set results. Generated reports are written to `$WORK/reports`.
+
+```bash
+docker run -d --name hifold-dash --restart unless-stopped --gpus all \
+  -p 127.0.0.1:8080:8080 --user "$(id -u):$(id -g)" -v "$WORK":/work hifold-mamba:<sha> dashboard
+```
+
+`--gpus all` only lets the dashboard show GPU load. It uses no GPU memory.
+
+**Opening it from your own computer.** The port is published on 127.0.0.1 only, so it is not open to the university network. Use an SSH tunnel and browse to http://localhost:8080:
+
+```bash
+ssh -L 8080:localhost:8080 you@university-machine
+```
+
+To publish it on the network instead, use `-p 8080:8080` **and** a token: add `-e HIFOLD_DASH_TOKEN=<long random string>`, then open `http://host:8080/?token=<string>` once. A cookie keeps you signed in.
+
+**What it shows:**
+- every run: state, progress, speed, time left, best validation SCC, curves, config and errors;
+- the planned Stage 2 programme from `configs/programme.yaml`;
+- GPU load and free disk space.
+
+The page refreshes every 15 s. A link to one run is `/#run=<run name>`.
+
+**Run states:**
+
+| State | Meaning |
+|---|---|
+| running | log lines are arriving |
+| finished | the run reached its last step |
+| failed | the run stopped with an error, or was stopped. The error and traceback are shown. |
+| stalled | the status file says running, but no log line for 60 min (`HIFOLD_STALE_MIN`). The process was probably killed, ran out of memory or lost power. Check `docker ps -a` and `docker logs`. |
+
+**Reports:** "Generate report now" writes `report-<date>.html` (open it and print to PDF), `.md` and `.csv` into `$WORK/reports`.
+
+**Naming runs for the programme:**
+- λ pilot runs: `name=lambda_pilot_<k>`;
+- H3 runs: `name=h3_<...>`;
+- robustness runs: `name=robust_<...>`.
+
+`name` does not enter the config hash, so renaming a run does not change what is trained.
