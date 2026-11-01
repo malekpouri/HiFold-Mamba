@@ -73,7 +73,7 @@ def boundary_loss(pred_mat, tgt_mat, w, window=5):
 
 def git_commit():
     try:
-        sha = subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
+        sha = subprocess.check_output(["git", "rev-parse", "HEAD"], text=True, stderr=subprocess.DEVNULL).strip()
         dirty = bool(subprocess.check_output(["git", "status", "--porcelain", "--", "src", "configs"], text=True).strip())
         return sha + ("-dirty" if dirty else "")
     except Exception:

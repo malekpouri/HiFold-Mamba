@@ -27,7 +27,7 @@ docker load -i hifold-mamba_<sha>.tar.gz
 CACHE=/path/to/dnalongbench/cache      # contains akita5/ and h3/
 WORK=/path/to/hifold-work              # outputs; must be writable
 mkdir -p "$WORK"
-alias hifold='docker run --rm --gpus all --shm-size=16g --user "$(id -u):$(id -g)" \
+alias hifold='docker run --rm --gpus all --shm-size=16g --user "$(id -u):$(id -g)" -v /etc/localtime:/etc/localtime:ro \
   --mount type=bind,src="$CACHE",dst=/data/cache,readonly -v "$WORK":/work hifold-mamba:<sha>'
 
 hifold check                 # GPU, CUDA, bf16, data mount
@@ -35,6 +35,10 @@ hifold test -m "not slow"    # unit tests (one test skips: it needs the hg38 FAS
 hifold profile               # speed test: step time and peak memory per batch size
 hifold train hifold_paper seed=0        # writes $WORK/runs/<name>-<hash>-s0/
 ```
+
+`-v /etc/localtime:...` gives the container the host's time zone, for status times and report names.
+
+**Stopping a run:** `docker stop` records the run as failed with "stopped by SIGTERM". There is no resume: restarting the same config starts again from step 0. The dashboard counts that as a second attempt and shows only the last one.
 
 **Long runs:**
 - Use `docker run -d --name <run>` instead of `--rm`, so a run survives logout.
@@ -50,7 +54,8 @@ The dashboard runs as a second container next to the training runs. It only **re
 
 ```bash
 docker run -d --name hifold-dash --restart unless-stopped --gpus all \
-  -p 127.0.0.1:8080:8080 --user "$(id -u):$(id -g)" -v "$WORK":/work hifold-mamba:<sha> dashboard
+  -p 127.0.0.1:8080:8080 --user "$(id -u):$(id -g)" -v /etc/localtime:/etc/localtime:ro \
+  -v "$WORK":/work hifold-mamba:<sha> dashboard
 ```
 
 `--gpus all` only lets the dashboard show GPU load. It uses no GPU memory.
