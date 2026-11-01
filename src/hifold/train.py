@@ -11,6 +11,7 @@ import copy
 import hashlib
 import json
 import math
+import os
 import subprocess
 import sys
 import time
@@ -76,7 +77,8 @@ def git_commit():
         dirty = bool(subprocess.check_output(["git", "status", "--porcelain", "--", "src", "configs"], text=True).strip())
         return sha + ("-dirty" if dirty else "")
     except Exception:
-        return "unknown"
+        # inside the Docker image there is no .git; the image records the commit it was built from
+        return os.environ.get("HIFOLD_COMMIT", "unknown")
 
 
 def config_hash(cfg):

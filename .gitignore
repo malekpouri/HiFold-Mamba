@@ -51,3 +51,6 @@ runs_*.log
 # credentials
 4dnucleome.txt
 *keypairs*.json
+
+# Docker image exports
+/dist/
