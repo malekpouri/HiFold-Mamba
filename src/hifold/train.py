@@ -147,6 +147,66 @@ def evaluate(model, loader, device, amp=True, max_batches=None):
             "scc_hicrep": a[:, 3], "pcc": a[:, 4]}
 
 
+# --- data and initialisation ---------------------------------------------------------------
+
+# Robustness split (protocol §1, manuscript §2.13): chromosome held-out, windows from all official splits.
+CHROM_HOLDOUT = {"test": ("chr1", "chr8", "chr12"), "valid": ("chr3", "chr6")}
+
+
+def make_datasets(d, seed):
+    """Training and validation datasets for a config's `data` section.
+
+    split_scheme "official" (default): the DNALongBench train/valid files. Optional training subset from
+      subset_file + subset_regime (H3 limited-data regimes, configs/h3_subsets.json).
+    split_scheme "chrom_holdout": the windows of all three official files, re-assigned by chromosome
+      (CHROM_HOLDOUT). Its test chromosomes are never loaded here.
+    """
+    lines, cells, shift, rc = d.get("lines"), d.get("cell_ids"), d.get("max_shift", 11), d.get("augment_rc", False)
+    scheme = d.get("split_scheme", "official")
+    if scheme == "official":
+        subset = d.get("train_subset")
+        if d.get("subset_file"):
+            subset = json.loads(Path(d["subset_file"]).read_text())[str(d["subset_regime"])]["windows"]
+        return (ContactCache(d["root"], "train", lines, cells, shift, subset=subset, seed=seed, augment_rc=rc),
+                ContactCache(d["root"], "valid", lines, cells, 0))
+    if scheme == "chrom_holdout":
+        held = set(CHROM_HOLDOUT["test"]) | set(CHROM_HOLDOUT["valid"])
+        tr, va = [], []
+        for split in ("train", "valid", "test"):
+            wins = ContactCache(d["root"], split, lines, cells, 0).windows
+            t_idx = [i for i, w in enumerate(wins) if w[0] not in held]
+            v_idx = [i for i, w in enumerate(wins) if w[0] in CHROM_HOLDOUT["valid"]]
+            if t_idx:
+                tr.append(ContactCache(d["root"], split, lines, cells, shift, subset=t_idx, seed=seed, augment_rc=rc))
+            if v_idx:
+                va.append(ContactCache(d["root"], split, lines, cells, 0, subset=v_idx))
+        return torch.utils.data.ConcatDataset(tr), torch.utils.data.ConcatDataset(va)
+    raise ValueError(f"unknown split_scheme {scheme}")
+
+
+def load_expanding(model, state):
+    """Load a checkpoint into a model that may have more cell lines (H3: 5 trained + 1 new line).
+
+    Per-cell tables (cell embedding, distance bias) whose first dimension grew keep the trained rows; the
+    new rows keep the model's fresh initialisation (random embedding, zero distance bias). Every other
+    tensor must match exactly.
+    """
+    own = model.state_dict()
+    grown = []
+    for k, v in state.items():
+        if k in own and own[k].shape != v.shape:
+            if own[k].shape[1:] != v.shape[1:] or own[k].shape[0] < v.shape[0]:
+                raise ValueError(f"{k}: checkpoint {tuple(v.shape)} does not fit model {tuple(own[k].shape)}")
+            new = own[k].clone()
+            new[: v.shape[0]] = v
+            state = {**state, k: new}
+            grown.append(k)
+    missing, unexpected = model.load_state_dict(state, strict=False)
+    if unexpected or [m for m in missing if not m.endswith("dist")]:
+        raise ValueError(f"checkpoint mismatch: missing {missing}, unexpected {unexpected}")
+    return grown
+
+
 # --- main loop -----------------------------------------------------------------------------
 
 def train(cfg: dict):
@@ -163,17 +223,14 @@ def train(cfg: dict):
         "device": torch.cuda.get_device_name(0) if device.type == "cuda" else "cpu",
         "python": sys.version.split()[0], "started": time.strftime("%Y-%m-%d %H:%M:%S")}, indent=2))
 
-    d = cfg["data"]
-    train_ds = ContactCache(d["root"], "train", d.get("lines"), d.get("cell_ids"), d.get("max_shift", 11),
-                            subset=d.get("train_subset"), seed=cfg["seed"], augment_rc=d.get("augment_rc", False))
-    valid_ds = ContactCache(d["root"], "valid", d.get("lines"), d.get("cell_ids"), 0)
-    tl = DataLoader(train_ds, batch_size=cfg["batch_size"], shuffle=True, num_workers=d.get("workers", 2),
+    train_ds, valid_ds = make_datasets(cfg["data"], cfg["seed"])
+    tl = DataLoader(train_ds, batch_size=cfg["batch_size"], shuffle=True, num_workers=cfg["data"].get("workers", 2),
                     drop_last=True, generator=torch.Generator().manual_seed(cfg["seed"]))
-    vl = DataLoader(valid_ds, batch_size=cfg["batch_size"], shuffle=False, num_workers=d.get("workers", 2))
+    vl = DataLoader(valid_ds, batch_size=cfg["batch_size"], shuffle=False, num_workers=cfg["data"].get("workers", 2))
 
     model = (Akita if model_type == "akita" else HiFold)(mcfg).to(device)
     if cfg.get("init_from"):
-        model.load_state_dict(torch.load(cfg["init_from"], map_location=device)["model"], strict=False)
+        load_expanding(model, torch.load(cfg["init_from"], map_location=device)["model"])
     if cfg.get("optimizer", "adamw") == "sgd":     # Akita's published optimiser
         opt = torch.optim.SGD(model.parameters(), lr=cfg["lr"], momentum=cfg.get("momentum", 0.9))
     else:
@@ -181,11 +238,23 @@ def train(cfg: dict):
     ema = EMA(model, cfg.get("ema_decay", 0.999))
     accum = cfg.get("grad_accum", 1)
     total = cfg["steps"]
+    save_at = set(cfg.get("save_at") or [])          # full training state for forks (λ pilot, manuscript §2.6)
+    assert all(s % accum == 0 for s in save_at), "save_at steps must fall on optimiser steps"
+    start = 0
+    if cfg.get("resume_from"):
+        # Fork: weights, EMA, optimiser state and step continue exactly; the LR schedule continues from the
+        # step. The data order after the fork is a fresh shuffle (the loader position is not restored).
+        st = torch.load(cfg["resume_from"], map_location=device)
+        model.load_state_dict(st["model"])
+        ema.shadow.load_state_dict(st["ema"])
+        opt.load_state_dict(st["opt"])
+        start = st["step"]
+        assert start % accum == 0 and start < total, f"cannot resume at step {start} of {total}"
     iu = triu_index(mcfg.out_bins, device=device)
     lam = cfg.get("struct", {})
     struct_from = lam.get("start_step", None)
     select = cfg.get("select_metric", "scc_hicrep")
-    best, step, log = -np.inf, 0, open(run / "metrics.jsonl", "a")
+    best, step, log = -np.inf, start, open(run / "metrics.jsonl", "a")
     t0 = time.time()
     write_status(run, "running", steps=total)
 
@@ -222,6 +291,9 @@ def train(cfg: dict):
                 opt.zero_grad(set_to_none=True)
                 ema.update(model)
             step += 1
+            if step in save_at:
+                torch.save({"model": model.state_dict(), "ema": ema.shadow.state_dict(), "opt": opt.state_dict(),
+                            "step": step, "config": cfg}, run / f"fork_step{step}.pt")
             if step % cfg.get("log_every", 50) == 0:
                 rec = {"step": step, "loss": loss.item(), **parts, "lr": opt.param_groups[0]["lr"],
                        "sec": round(time.time() - t0, 1)}

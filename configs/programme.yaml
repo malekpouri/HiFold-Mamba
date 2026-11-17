@@ -74,15 +74,23 @@ tasks:
   - id: h3
     label: "H3 few-shot (4 lines x 4 regimes x 2 arms x 3 seeds)"
     hypothesis: H3
-    config: null
+    config: h3_finetune
     name_prefix: h3_
     expected: 96
     est_gpu_h: 1
 
+  - id: struct_terms
+    label: "Ablation: each structural term alone (lambda_ins = 0 or lambda_bnd = 0)"
+    hypothesis: ablation
+    config: hifold_struct
+    name_prefix: struct_only_
+    expected: 6
+    est_gpu_h: 26
+
   - id: sensitivity
-    label: "Window sensitivity and robustness split (1 seed)"
+    label: "Robustness split (4 models) and insulation window w = 20 / 80 (1 seed)"
     hypothesis: robustness
-    config: null
+    config: hifold_paper / akita_repro / baselines (data.split_scheme=chrom_holdout); hifold_struct (w)
     name_prefix: robust_
-    expected: null
+    expected: 6
     est_gpu_h_total: 100

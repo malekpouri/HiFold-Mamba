@@ -1,0 +1,38 @@
+# H3 few-shot adaptation (manuscript §2.11, protocol §5). One held-out line per run.
+# Overrides set per run by the queue (name=h3_<line>_<regime>_<arm>):
+#   data.lines=[<line>]      HAP1 | HeLa | HepG2 | K562
+#   data.subset_regime=<r>   10 | 25 | 50 | full   (configs/h3_subsets.json, nested contig blocks)
+#   init_from=<Base best.pt> pretrain arm only, seed-matched; omitted for the scratch arm
+# The held-out line is cell 5: a new embedding row and a new distance-bias row (load_expanding).
+name: h3
+model_type: hifold
+seed: 0
+model:
+  bin_norm: true
+  cell_dist_bias: true
+  n_cells: 6
+data:
+  root: /mnt/storage/datasets/Human genomes Dataset/new_idea/datasets/dnalongbench/cache/h3
+  lines: [HAP1]
+  cell_ids: [5]
+  subset_file: configs/h3_subsets.json
+  subset_regime: 10
+  max_shift: 11
+  workers: 4
+batch_size: 1
+grad_accum: 8
+optimizer: adamw
+lr: 0.0001
+weight_decay: 0.01
+schedule: cosine
+warmup: 200
+steps: 3504                 # identical for both arms and every regime
+# NOT in the manuscript, to be confirmed by the user before registration:
+#  - weights: final EMA weights at step 3,504 (one evaluation, at the end, so best.pt = final);
+#  - ema_decay 0.99: with 438 optimiser steps, the main runs' 0.999 would leave the scratch arm's EMA
+#    mostly at its random initialisation.
+ema_decay: 0.99
+eval_every: 3504
+eval_batches: 500           # validation for monitoring only: first 500 windows of the line's valid file
+log_every: 100
+select_metric: scc_hicrep

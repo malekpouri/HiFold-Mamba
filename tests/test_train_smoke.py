@@ -33,7 +33,7 @@ def _fake_cache(root, n=4, lines=("A", "B")):
         (d / "meta.json").write_text(json.dumps({"lines": list(lines), "n": n}))
 
 
-def _run(tmp_path, cell_dist_bias, steps=60):
+def _run(tmp_path, cell_dist_bias, steps=60, **extra):
     cfg = {
         "name": f"smoke{int(cell_dist_bias)}", "seed": 0, "device": "cpu", "run_root": str(tmp_path / "runs"),
         "model": dict(seq_len=L, tower_channels=[8, 8, 8, 8, 16, 16], d_model=16, n_blocks=3, d_state=4,
@@ -43,6 +43,7 @@ def _run(tmp_path, cell_dist_bias, steps=60):
         "weight_decay": 0.0, "log_every": 2, "eval_every": steps // 2,
         "struct": {"start_step": steps // 2, "ins": 0.1, "w": 10},
     }
+    cfg.update(extra)
     run, best = T.train(cfg)
     recs = [json.loads(line) for line in (run / "metrics.jsonl").read_text().splitlines()]
     return run, best, recs
@@ -92,3 +93,25 @@ def test_evaluate_checkpoint_and_global_mean(tmp_path):
     ev.global_mean(str(tmp_path / "cache"), "valid", str(tmp_path / "gm.tsv"))
     gm = pd.read_csv(tmp_path / "gm.tsv", sep="\t")
     assert len(gm) == 8 and (gm["model"] == "global_mean").all()
+
+
+@pytest.mark.filterwarnings("ignore::RuntimeWarning")
+def test_fork_and_resume(tmp_path):
+    """λ pilot: a run saves its full state at save_at; a fork resumes from it and continues the schedule."""
+    import torch
+    _fake_cache(tmp_path / "cache")
+    run_a, _, recs_a = _run(tmp_path, cell_dist_bias=True, steps=16, save_at=[8])
+    fork = run_a / "fork_step8.pt"
+    st = torch.load(fork)
+    assert st["step"] == 8 and {"model", "ema", "opt"} <= set(st)
+
+    run_b, _, recs_b = _run(tmp_path, cell_dist_bias=True, steps=16, name="fork", resume_from=str(fork))
+    train_b = [r for r in recs_b if not r.get("eval")]
+    assert train_b[0]["step"] == 10 and train_b[-1]["step"] == 16           # starts after the fork
+    lr_a = {r["step"]: r["lr"] for r in recs_a if not r.get("eval")}
+    assert all(r["lr"] == pytest.approx(lr_a[r["step"]]) for r in train_b)  # same schedule position
+    assert any("ins" in r for r in train_b)                                  # struct phase active
+    assert json.loads((run_b / "status.json").read_text())["state"] == "finished"
+    from hifold.monitor.runs import summarize
+    sm = summarize(run_b)
+    assert sm["step"] == 16 and sm["attempts"] == 1

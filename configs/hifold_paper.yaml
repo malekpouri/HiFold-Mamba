@@ -23,3 +23,4 @@ ema_decay: 0.999
 eval_every: 7008
 log_every: 100
 select_metric: scc_hicrep
+save_at: [52560]           # full training state for the λ-pilot fork (manuscript §2.6); about 4x the model size
