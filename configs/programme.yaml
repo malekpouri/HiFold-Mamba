@@ -29,7 +29,7 @@ tasks:
     config: akita_repro
     name: akita_repro
     seeds: [0, 1, 2]
-    est_gpu_h: 5.2
+    est_gpu_h: 10.4             # 140,160 steps since 2026-11-17 (was 5.2 h at 70,080)
 
   - id: attention
     label: "Baseline: matched Transformer"

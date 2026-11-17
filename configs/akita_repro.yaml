@@ -20,7 +20,7 @@ momentum: 0.99575
 clip: 10.0
 schedule: constant
 warmup: 0
-steps: 70080          # 20 epochs x 3504 steps; Akita used early stopping with patience 12
+steps: 140160         # 40 epochs x 3504 steps (doubled 2026-11-17: the 70,080-step pilots left their plateau only after ~45k steps and were still unstable at the end; notes/2026-11-16_5090-queue-batch1.md). Akita used early stopping with patience 12
 ema_decay: 0.999
 eval_every: 3504      # once per epoch
 log_every: 100
