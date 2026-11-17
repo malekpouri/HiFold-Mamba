@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Build the HiFold-Mamba image from the current commit and save it as a transferable file.
 #   docker/build.sh            -> image hifold-mamba:<short sha> + dist/hifold-mamba_<short sha>.tar.gz
+#                                 + dist/run-queue.ps1 (replaces any earlier files in dist/)
 #   docker/build.sh --no-save  -> image only
 set -euo pipefail
 repo="$(cd "$(dirname "$0")/.." && pwd)"
@@ -31,8 +32,10 @@ docker build -f docker/Dockerfile \
 
 if [ "${1:-}" != "--no-save" ]; then
   mkdir -p dist
+  rm -f dist/hifold-mamba_*.tar.gz dist/hifold-mamba_*.tar.gz.sha256 dist/run-queue.ps1   # one transferable set only
   out="dist/hifold-mamba_${short}.tar.gz"
   docker save "hifold-mamba:$short" | gzip -1 > "$out"
   (cd dist && sha256sum "${out#dist/}" > "${out#dist/}.sha256")
-  echo "saved $out ($(du -h "$out" | cut -f1))"
+  sed "s/IMAGE_TAG/$short/" docker/run-queue.ps1 > dist/run-queue.ps1     # Windows queue for this image
+  echo "saved $out ($(du -h "$out" | cut -f1)) and dist/run-queue.ps1"
 fi

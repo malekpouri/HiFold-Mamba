@@ -92,3 +92,26 @@ The page refreshes every 15 s. A link to one run is `/#run=<run name>`.
 - robustness runs: `name=robust_<...>`.
 
 `name` does not enter the config hash, so renaming a run does not change what is trained.
+
+## Windows + Docker Desktop (RTX 5090 setup)
+
+Tested by the user on Windows with Docker Desktop (WSL2 engine). Differences from Linux:
+- no `--user` and no `/etc/localtime`: use `-e TZ=<zone>`;
+- compiler caches in `/tmp` (`-e HOME=/tmp -e TRITON_CACHE_DIR=/tmp/triton -e TORCHINDUCTOR_CACHE_DIR=/tmp/inductor`);
+- data in a Docker volume, `hifold-cache`, because a Windows folder mounted into a container is too slow for training.
+The Windows NVIDIA driver must support CUDA 13 (≥ 580). With an older one, `check` reports "NO GPU visible", and training would otherwise fall back to the CPU.
+
+**Data in the volume.** Copy each folder once (`<src>` is the Windows folder that holds it):
+
+```powershell
+docker run --rm -v hifold-cache:/data/cache -v "<src>:/src:ro" hifold-mamba:<sha> sh -c "mkdir -p /data/cache/<dst> && cp -r /src/<part> /data/cache/<dst>/"
+```
+
+| Needed for | Folder | Size |
+|---|---|---|
+| all main runs | `akita5/train`, `akita5/valid` | 15 GB |
+| chromosome-held-out runs (`robust_*`) | `akita5/test` | 0.8 GB |
+| H3 runs (`h3_*`) | `h3/train`, `h3/valid` | 25 GB |
+| final H3 evaluation only (after all runs) | `h3/test` | 12 GB |
+
+**The queue.** `dist/run-queue.ps1` (written by `build.sh` for this image) runs the whole programme one container at a time, in an order that respects dependencies. Base seed 0 comes first and saves the fork state at step 52,560; the λ pilot forks from it; H3 pretrain runs start from the seed-matched Base checkpoint. Runs whose inputs are missing are skipped with a reason, and finished runs are skipped, so run the script again whenever something new is ready. Struct, the single-term ablations and w = 20/80 are added after the λ selection.
