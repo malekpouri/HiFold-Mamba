@@ -164,3 +164,21 @@ def test_negative_control_unpaired_head_is_detected():
     x = onehot(torch.randint(0, 4, (1, cfg.seq_len)))
     with pytest.raises(AssertionError):
         _check(m, x, torch.tensor([[0]]), atol=1e-4, rtol=1e-5)
+
+
+# --- bin_norm (added 2026-11-17) -----------------------------------------------------------
+
+@pytest.mark.parametrize("mode", ["eval", "train_ckpt"])
+def test_full_model_bin_norm_fp32(mode):
+    cfg = small_cfg(bin_norm=True, checkpoint=mode == "train_ckpt")
+    m = _model(cfg)
+    m.train() if mode == "train_ckpt" else m.eval()
+    x = onehot(torch.randint(0, 4, (1, cfg.seq_len)))
+    _check(m, x, torch.tensor([[0, 2, 4]]), atol=1e-4, rtol=1e-5)
+
+
+def test_full_model_bin_norm_bf16_loose():
+    cfg = small_cfg(bin_norm=True)
+    m = _model(cfg).eval()
+    x = onehot(torch.randint(0, 4, (1, cfg.seq_len)))
+    _check(m, x, torch.tensor([[0]]), atol=5e-2, rtol=1e-2, dtype=torch.bfloat16)

@@ -6,6 +6,7 @@ name: hifold_struct
 model_type: hifold
 seed: 0
 model:
+  bin_norm: true            # 2026-11-17: fixes the collapse of the pilot runs (notes/2026-11-16_5090-queue-batch1.md)
   cell_dist_bias: true
 struct:
   start_step: 52560

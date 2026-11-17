@@ -3,6 +3,7 @@ name: baseline_attention
 model_type: hifold
 seed: 0
 model:
+  bin_norm: true            # 2026-11-17: fixes the collapse of the pilot runs (notes/2026-11-16_5090-queue-batch1.md)
   cell_dist_bias: true      # decided 2026-10-23 (line-specific residual P(s))
   mixer: attention
   attn_dim: 224

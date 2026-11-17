@@ -19,8 +19,8 @@ DTYPE = os.environ.get("PROFILE_DTYPE", "bf16")
 AMP = {"bf16": torch.bfloat16, "fp16": torch.float16, "fp32": None}[DTYPE]
 
 CONFIGS = {
-    "paper": HiFoldConfig(),
-    "fallback": HiFoldConfig(n_blocks=4, d_model=128, tower_channels=[32, 32, 48, 48, 64, 64, 80, 80, 96, 96, 128]),
+    "paper": HiFoldConfig(bin_norm=True),
+    "fallback": HiFoldConfig(bin_norm=True, n_blocks=4, d_model=128, tower_channels=[32, 32, 48, 48, 64, 64, 80, 80, 96, 96, 128]),
 }
 
 

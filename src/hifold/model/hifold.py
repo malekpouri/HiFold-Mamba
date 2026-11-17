@@ -2,6 +2,7 @@
 
 one-hot (B, 2^20, 4)
  -> RC conv tower, 11 x (conv, norm, GELU, max-pool 2)      -> (B, 512, 2D)   [cell-independent]
+ -> per-channel standardisation over the 512 bins (bin_norm)
  -> n_blocks x [RCPS(BiMamba) + FiLM(cell) + RC FFN], residual -> (B*, 512, 2D)
  -> multi-scale mixer over shallow / intermediate / deep states
  -> symmetric RC-paired biaffine head + learned distance bias, crop 32 -> (B*, 448, 448)
@@ -43,6 +44,11 @@ class HiFoldConfig:
     # Without it the model cannot express cell-specific distance profiles (notes/2026-10-21_phase3-5.md).
     cell_dist_bias: bool = True
     checkpoint: bool = True
+    # Standardise each channel over the bins after the tower (added 2026-11-17, notes/2026-11-16_5090-queue-batch1.md).
+    # Without it the tower's per-position LayerNorm leaves near-constant channels: positional variation falls
+    # to ~5 % of the feature scale and the model learns only the distance profile. Default False keeps the
+    # configs of the failed pilot runs reproducible; every HiFold-path config sets it explicitly.
+    bin_norm: bool = False
     # Ablations (architecture §5). rc_equivariant=False: same shapes and FLOPs, untied RC halves (train with
     # augment_rc). multiscale=False: the head sees only the deepest state at full resolution.
     rc_equivariant: bool = True
@@ -144,6 +150,16 @@ class MultiScaleMixer(nn.Module):
         return self.norm(out)
 
 
+def bin_norm(h, eps=1e-5):
+    """(B, n_bins, C): zero mean, unit SD per sample and channel over the bins; returns fp32.
+
+    RC-equivariant: RC reverses the bins (statistics unchanged) and permutes channels (statistics move
+    with their channel). No learned parameters.
+    """
+    hf = h.float()
+    return (hf - hf.mean(1, keepdim=True)) / (hf.std(1, keepdim=True) + eps)
+
+
 class PairHead(nn.Module):
     """C_ij = sym( (U_i . V_j) / sqrt(2 d) + b_|i-j| ), with U = [Z P, (J Z) P], V = [Z Q, (J Z) Q].
 
@@ -212,7 +228,12 @@ class HiFold(nn.Module):
         h = self.stem(x)
         for blk in self.tower:
             h = self._ckpt(blk, h)
-        return self.to_model(h)
+        if not self.cfg.bin_norm:
+            return self.to_model(h)
+        # fp32: the positional part is a small fraction of the feature scale, and bf16 rounding of the
+        # projection would be magnified by the standardisation (bf16 RC error 0.055 vs 0.006 without fp32)
+        with torch.autocast(h.device.type, enabled=False):
+            return bin_norm(self.to_model(h.float()))
 
     def decode(self, h, cells):
         """h: (B, n_bins, d_model); cells: (B,) long. Returns (B, out_bins, out_bins)."""
